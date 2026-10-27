@@ -31,21 +31,32 @@ La consola opera de forma integrada con el ecosistema de la factoria de software
 
 ---
 
-## 3. Modulos Funcionales
+## 3. Modulos Funcionales e Interfaz
+
+La consola organiza las operaciones de la Software Factory en 5 pestañas de control de alta densidad y visualización Bento Dark Pro:
 
 ```text
-+---------------------------------------------------------------------------------------------------+
-|                     AUTONOMOUS DEV CONTROL CENTER (Windows Desktop Dark Pro)                      |
-|                     Sdog Farm Software Factory · sadogfarm.onmicrosoft.com                        |
-+---------------------------------------------------------------------------------------------------+
-|  [ SERVICIOS & SALUD ]  [ PROYECTOS & KANBAN ]  [ GESTOR DE INCIDENCIAS ]  [ EVENTOS & AUDITORIA ]|
-+---------------------------------------------------------------------------------------------------+
-| 1. SERVICIOS:        Telemetria continua de FCC (:8082), Backend (:8000), SQLite y Foundry        |
-| 2. KANBAN:           Seguimiento de estados, visualizacion de expedientes y Aprobacion Humana     |
-| 3. INCIDENCIAS:      Triaje por severidad (Critical/High), diagnostico de causa raiz y resolucion |
-| 4. AUDITORIA:        Pista forense inmutable y exportacion de informes AI-GRC a Markdown         |
-+---------------------------------------------------------------------------------------------------+
++-----------------------------------------------------------------------------------------------------------------------------+
+|                                           AUTONOMOUS DEV CONTROL CENTER (Windows Desktop)                                   |
+|                                     Sdog Farm Software Factory · sadogfarm.onmicrosoft.com                                  |
++-----------------------------------------------------------------------------------------------------------------------------+
+| [SERVICIOS & SALUD] [PROYECTOS & KANBAN] [CODE SESSIONS & AGENTES] [GESTOR DE INCIDENCIAS] [EVENTOS & AUDITORIA]          |
++-----------------------------------------------------------------------------------------------------------------------------+
+| 1. SERVICIOS:        Telemetria continua de FCC (:8082), Backend (:8000), SQLite WAL, Sandboxes y Foundry                   |
+| 2. KANBAN:           Seguimiento de estados, visualizacion de expedientes tecnicos y Aprobacion Humana AI-GRC               |
+| 3. CODE SESSIONS:    Hub web FCC, lanzadores CLI e interaccion interactiva con agentes y modelos gratuitos/comerciales     |
+| 4. INCIDENCIAS:      Triaje por severidad (Critical/High), diagnostico de causa raiz y resolucion auditada                  |
+| 5. AUDITORIA:        Pista forense inmutable, visor de logs y exportacion de informes AI-GRC a Markdown                    |
++-----------------------------------------------------------------------------------------------------------------------------+
 ```
+
+### Capturas de Pantalla de la Consola
+
+#### Monitorizacion de Servicios y Salud de Infraestructura
+![Consola Servicios y Salud](docs/screenshots/consola_servicios_salud.png)
+
+#### Code Sessions, Agentes Especializados e Inferencia Interactiva
+![Code Sessions y Agentes](docs/screenshots/consola_code_sessions_agentes.png)
 
 ---
 
@@ -93,11 +104,12 @@ Todas las pruebas pasaron satisfactoriamente.
 ```
 
 ### B. Validacion Interactiva en Pantalla
-1. **Comprobar Servicios:** Pulse *Verificar Conexiones* en la pestana *SERVICIOS & SALUD*. El badge de SQLite y los puertos activos se mostraran en verde con su latencia en milisegundos.
+1. **Comprobar Servicios:** Pulse *Verificar Conexiones* en la pestana *SERVICIOS & SALUD*. El badge de SQLite y los puertos activos se mostraran en verde con su latencia en milisegundos. Tambien puede abrir FCC Admin (`:8082/admin`) directamente desde la tarjeta de servicio.
 2. **Crear Tarea Kanban:** En la pestana *PROYECTOS & KANBAN*, pulse *+ NUEVA TAREA*, complete los campos y verifique su aparicion inmediata en la tabla.
-3. **Probar Aprobacion Humana:** Seleccione una tarea en estado distinto a `REVIEW` y compruebe que el sistema bloquea su promocion; seleccione una tarea en `REVIEW` y verifique que transiciona a `DONE` tras la confirmacion.
-4. **Gestionar Incidencias:** En la pestana *GESTOR DE INCIDENCIAS*, cree una incidencia con severidad `high`, verifiquela en el expediente y proceda a su cierre mediante *RESOLVER / CERRAR*.
-5. **Exportar Auditoria:** En la cabecera, pulse *EXPORTAR INFORME AI-GRC* y verifique la creacion del informe consolidado en la carpeta `reports/`.
+3. **Interaccion con Agentes en Code Sessions:** En la pestana *CODE SESSIONS & AGENTES*, seleccione el rol deseado (*Arquitecto de Software*, *Analista*, *QA*, etc.), mantenga el modelo predeterminado gratuito `kilo/kilo-auto/free` (u otro como `kilo/openrouter/free` o `claude-3-5-sonnet-20241022`), redacte una consulta en el recuadro inferior y pulse *ENVIAR A AGENTE*. Compruebe la respuesta del agente y la inmutabilidad del log forense.
+4. **Probar Aprobacion Humana:** Seleccione una tarea en estado distinto a `REVIEW` y compruebe que el sistema bloquea su promocion; seleccione una tarea en `REVIEW` y verifique que transiciona a `DONE` tras la confirmacion.
+5. **Gestionar Incidencias:** En la pestana *GESTOR DE INCIDENCIAS*, cree una incidencia con severidad `high`, verifiquela en el expediente y proceda a su cierre mediante *RESOLVER / CERRAR*.
+6. **Exportar Auditoria:** En la cabecera, pulse *EXPORTAR INFORME AI-GRC* y verifique la creacion del informe consolidado en la carpeta `reports/`.
 
 Para una guia detallada paso a paso, consulte [docs/GUIA_VALIDACION.md](docs/GUIA_VALIDACION.md).
 
@@ -114,6 +126,8 @@ AutonomousDevConsole/
 ├── requirements.txt
 ├── run_console.bat
 ├── run_console.ps1
+├── run_fcc_server.bat
+├── launch_fcc_client.bat
 ├── main.py
 ├── config/
 │   └── settings.json
@@ -125,7 +139,10 @@ AutonomousDevConsole/
 ├── docs/
 │   ├── ARQUITECTURA.md
 │   ├── GUIA_VALIDACION.md
-│   └── MANUAL_OPERACION.md
+│   ├── MANUAL_OPERACION.md
+│   └── screenshots/
+│       ├── consola_servicios_salud.png
+│       └── consola_code_sessions_agentes.png
 ├── tests/
 │   ├── __init__.py
 │   └── test_console.py

@@ -13,14 +13,16 @@ graph TD
         subgraph Modulos_UI["Modulos Operacionales"]
             M1["1. Monitorizacion y Control de Servicios"]
             M2["2. Estados de Proyecto y Kanban"]
-            M3["3. Gestor de Incidencias AI-GRC"]
-            M4["4. Registro de Eventos y Auditoria"]
+            M3["3. Code Sessions e Interaccion con Agentes"]
+            M4["4. Gestor de Incidencias AI-GRC"]
+            M5["5. Registro de Eventos y Auditoria"]
         end
         
         ConsoleApp --> M1
         ConsoleApp --> M2
         ConsoleApp --> M3
         ConsoleApp --> M4
+        ConsoleApp --> M5
     end
 
     subgraph Capa_Persistencia["Persistencia Transaccional"]
@@ -88,12 +90,17 @@ sequenceDiagram
 - **Inspeccion de Tareas:** Muestra titulo, descripcion, prioridad (`low`, `medium`, `high`, `critical`), clasificacion de datos AI-GRC (`approved_remote`, `restricted`, `local_only`), rama git, criterios de aceptacion y log historico de transiciones.
 - **Puerta de Enlace Humana (Human-in-the-Loop Barrier):** Implementa la barrera de aprobacion obligatoria antes de autorizar la promocion de cualquier tarea a `DONE`.
 
-### Modulo 3: Gestor de Incidencias Operacionales y AI-GRC
+### Modulo 3: Code Sessions e Interaccion con Agentes
+- **Hub Web de FCC (:8082/admin/code):** Apertura en navegador del centro de sesiones de código de FCC.
+- **Lanzadores de Terminal:** Ejecución desacoplada de sesiones CLI de Claude Code (`launch_fcc_client.bat`) y Aider/Codex con variables de entorno de proxy loopback preconfiguradas.
+- **Consola Interactiva de Agentes:** Inyección de System Prompts especializados por rol (Arquitecto, Analista, Full-Stack, QA Tester, Auditor AI-GRC, Project Manager), selección dinámica de modelos con prioridad gratuita (`kilo/kilo-auto/free`, `kilo/openrouter/free`, `open_router/openrouter/free`, `openrouter/auto`) y comerciales (`claude-3-5-sonnet-20241022`, `gpt-4o`). Ejecuta llamadas asíncronas HTTP a `/v1/messages` y almacena eventos forenses en SQLite WAL (`AGENT_INTERACTIVE_SESSION`).
+
+### Modulo 4: Gestor de Incidencias Operacionales y AI-GRC
 - **Deteccion y Registro:** Captura violaciones de politicas de seguridad, deteccion de credenciales o secretos (`SecretScanner`), excepciones en el sandbox de comandos y fallos de orquestacion.
 - **Triaje por Severidad:** Categorizacion en `critical`, `high`, `medium` y `low`.
 - **Resolucion Auditada:** Formulario para documentar la causa raiz y las acciones correctoras, guardando la firma del operador y la fecha de resolucion.
 
-### Modulo 4: Registro de Eventos, Auditoria y Exportacion Forense
+### Modulo 5: Registro de Eventos, Auditoria y Exportacion Forense
 - **Stream de Eventos:** Visualizacion de transiciones en `task_events` y de acciones de seguridad en `audit_logs`.
 - **Exportador Forense Markdown:** Genera informes ejecutivos estructurados en `reports/informe_auditoria_aigrc_<timestamp>.md` con tablas de metricas, distribucion de estados Kanban, inventario de incidencias y firmas humanas registradas.
 

@@ -75,7 +75,23 @@ Permite supervisar el ciclo de vida de los requerimientos y emitir aprobaciones 
 
 ---
 
-### Pestana 3: Gestor de Incidencias
+### Pestana 3: Code Sessions & Agentes
+Permite interactuar directamente con los agentes especializados de la factoría y probar modelos de inferencia a través del servidor local FCC.
+
+1. **Accesos y Herramientas Externas:**
+   - **Abrir Code Sessions Web:** Abre de inmediato `http://127.0.0.1:8082/admin/code` en el navegador web para ver el estado general de sesiones.
+   - **Lanzar Claude Code CLI:** Abre una ventana de comando ejecutando `launch_fcc_client.bat` configurada con el proxy loopback local.
+   - **Lanzar Sesión Aider / Codex:** Inicia la sesión para edición directa de repositorios.
+2. **Consola Interactiva de Agentes:**
+   - **Selector de Rol:** Selecciona el rol correspondiente (*Arquitecto de Software*, *Analista de Requerimientos*, *Desarrollador Full-Stack*, *Ingeniero QA / Tester*, *Auditor AI-GRC & Seguridad*, *Project Manager*).
+   - **Selector de Modelo:** Prioriza modelos gratuitos de alta disponibilidad (`kilo/kilo-auto/free`, `kilo/openrouter/free`, `open_router/openrouter/free`, `openrouter/auto`) o modelos avanzados (`deepseek/deepseek-chat`, `claude-3-5-sonnet-20241022`, `gpt-4o`).
+   - **Cuadro de Entrada de Prompt:** Escriba su instrucción técnica en el recuadro inferior y pulse `ENVIAR A AGENTE (Ctrl+Enter)`.
+   - **Visor de Historial:** Muestra la respuesta formateada con diagramas o tablas y bloquea la edición manual para proteger la integridad de la conversación.
+   - **Limpiar Historial:** Restablece la vista de conversación sin alterar los registros forenses en base de datos.
+
+---
+
+### Pestana 4: Gestor de Incidencias
 Permite auditar y resolver bloqueos operativos o violaciones normativas detectadas por los agentes.
 
 1. **Registro Manual de Incidencias:**
@@ -92,7 +108,7 @@ Permite auditar y resolver bloqueos operativos o violaciones normativas detectad
 
 ---
 
-### Pestana 4: Eventos & Auditoria
+### Pestana 5: Eventos & Auditoria
 Permite consultar la pista forense completa y exportar informes ejecutivos.
 
 1. **Visualizacion de Registros:**

@@ -59,7 +59,23 @@ Siga la siguiente matriz de pruebas para comprobar cada una de las funcionalidad
 
 ---
 
-### Paso 3: Validacion de la Barrera de Aprobacion Humana (AI-GRC Gate)
+### Paso 3: Validacion de Code Sessions e Interaccion con Agentes (FCC Hub)
+1. Abra la pestana **CODE SESSIONS & AGENTES**.
+2. Compruebe los enlaces directos en la barra superior:
+   - Pulse **Abrir Code Sessions Web**: debe abrir `http://127.0.0.1:8082/admin/code` en el navegador del sistema.
+   - Pulse **Lanzar Claude Code CLI**: lanza la terminal interactiva de Claude Code contra loopback mediante `launch_fcc_client.bat`.
+3. Validacion de la Consola Interactiva de Agentes:
+   - Seleccione el rol de agente: **Arquitecto de Software** (o *Analista*, *QA*, *Auditor*).
+   - Verifique que el modelo predeterminado es **`kilo/kilo-auto/free`** (tambien puede seleccionar `kilo/openrouter/free` o `claude-3-5-sonnet-20241022`).
+   - Redacte en el cuadro inferior resaltado (*INSTRUCCION TECNICA / PROMPT PARA EL AGENTE*):
+     `Define la arquitectura tecnica para la integracion del modulo de trazabilidad porcina en el proyecto LIVESTOCK-MANAGER`
+   - Pulse **ENVIAR A AGENTE (Ctrl+Enter)**.
+   - Verifique que el boton cambia a `PROCESANDO...` y que la respuesta estructurada del agente se renderiza en tiempo real en el visor superior.
+   - Compruebe que la caja de transcripcion superior es de solo lectura y que el evento se registra de forma inmutable en `audit_logs` (`AGENT_INTERACTIVE_SESSION`).
+
+---
+
+### Paso 4: Validacion de la Barrera de Aprobacion Humana (AI-GRC Gate)
 1. Seleccione la tarea creada en el Paso 2 (que esta en estado `BACKLOG`).
 2. Pulse el boton **APROBACION HUMANA (AI-GRC)**:
    - El sistema debe mostrar un aviso indicando que la tarea no esta en estado `REVIEW` y que solo las tareas en dicho estado requieren aprobacion humana, impidiendo la promocion prematura.
@@ -67,7 +83,7 @@ Siga la siguiente matriz de pruebas para comprobar cada una de las funcionalidad
 
 ---
 
-### Paso 4: Validacion del Gestor de Incidencias
+### Paso 5: Validacion del Gestor de Incidencias
 1. Abra la pestana **GESTOR DE INCIDENCIAS**.
 2. Pulse el boton **+ REGISTRAR INCIDENCIA**:
    - Titulo: `Alerta de Violacion Normativa de Prueba`
@@ -85,7 +101,7 @@ Siga la siguiente matriz de pruebas para comprobar cada una de las funcionalidad
 
 ---
 
-### Paso 5: Validacion del Registro de Auditoria y Exportacion Forense
+### Paso 6: Validacion del Registro de Auditoria y Exportacion Forense
 1. Abra la pestana **EVENTOS & AUDITORIA**.
 2. Seleccione el tipo de registro **Auditoria de Seguridad (audit_logs)**:
    - Compruebe que se listan las acciones `INCIDENT_CREATED` e `INCIDENT_RESOLVED` ejecutadas en el Paso 4.
