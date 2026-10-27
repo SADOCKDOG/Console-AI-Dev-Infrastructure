@@ -6,6 +6,7 @@ import datetime
 import json
 import os
 from pathlib import Path
+import shutil
 import socket
 import sqlite3
 import subprocess
@@ -1291,22 +1292,38 @@ class DesktopConsoleApp(tk.Tk):
 
                 # Comprobar si WSL esta disponible para ejecutar uvicorn dentro del entorno preparado
                 has_wsl = False
-                try:
-                    chk = subprocess.run(["wsl", "which", "python3"], capture_output=True, text=True, timeout=2)
-                    has_wsl = (chk.returncode == 0)
-                except Exception:
-                    pass
+                if shutil.which("wsl"):
+                    try:
+                        chk = subprocess.run(["wsl", "which", "python3"], capture_output=True, text=True, timeout=10)
+                        has_wsl = (chk.returncode == 0)
+                    except Exception:
+                        has_wsl = False
 
                 if has_wsl:
                     self.log_service_message("Iniciando FastAPI mediante entorno virtual WSL2 en 0.0.0.0:8000...")
-                    cmd = ["wsl", "bash", "-c", "cd ~/software-factory && source .venv/bin/activate && export PYTHONPATH=src && python -m uvicorn software_factory.api.main:app --host 0.0.0.0 --port 8000"]
+                    wsl_script = (
+                        "if [ -d /mnt/c/Users/yo/repo/AutonomousDev ]; then cd /mnt/c/Users/yo/repo/AutonomousDev; "
+                        "else cd ~/software-factory; fi && export PYTHONPATH=src && "
+                        "/home/yo/software-factory/.venv/bin/python -m uvicorn software_factory.api.main:app --host 0.0.0.0 --port 8000"
+                    )
+                    cmd = ["wsl", "bash", "-c", wsl_script]
                     self.backend_process = subprocess.Popen(cmd)
                 elif src_dir.exists():
-                    self.log_service_message("Iniciando FastAPI directamente en host Windows...")
-                    cmd = [sys.executable, "-m", "uvicorn", "software_factory.api.main:app", "--host", "127.0.0.1", "--port", "8000"]
-                    env = os.environ.copy()
-                    env["PYTHONPATH"] = f"{src_dir};{target_repo}"
-                    self.backend_process = subprocess.Popen(cmd, cwd=str(target_repo), env=env)
+                    chk_uvicorn = subprocess.run([sys.executable, "-c", "import uvicorn"], capture_output=True)
+                    if chk_uvicorn.returncode == 0:
+                        self.log_service_message("Iniciando FastAPI directamente en host Windows...")
+                        cmd = [sys.executable, "-m", "uvicorn", "software_factory.api.main:app", "--host", "127.0.0.1", "--port", "8000"]
+                        env = os.environ.copy()
+                        env["PYTHONPATH"] = f"{src_dir};{target_repo}"
+                        self.backend_process = subprocess.Popen(cmd, cwd=str(target_repo), env=env)
+                    else:
+                        self.log_service_message("Aviso: uvicorn no esta instalado en Python de Windows ni WSL2 respondio a tiempo.")
+                        messagebox.showwarning(
+                            "Servicio Backend",
+                            "No se pudo iniciar FastAPI porque uvicorn no está instalado en el entorno Python de Windows y WSL2 no respondió.\n\n"
+                            "Asegúrese de que el entorno virtual WSL2 esté disponible."
+                        )
+                        return
                 else:
                     self.log_service_message(f"Repositorio backend no detectado en {target_repo}")
                     messagebox.showinfo("Servicio Backend", f"El backend se encuentra en {target_repo}.\nAsegurese de que el repositorio este presente.")
