@@ -1,0 +1,6 @@
+# Dependencias para la Consola de Gestion Integral de Escritorio
+# La aplicacion base utiliza exclusivamente la libreria estandar de Python (tkinter, sqlite3, socket, threading, subprocess).
+# Las siguientes dependencias son recomendadas para integraciones avanzadas y pruebas:
+pytest>=8.0.0
+requests>=2.31.0
+pyyaml>=6.0.1

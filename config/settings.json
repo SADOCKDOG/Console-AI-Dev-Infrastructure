@@ -1,0 +1,18 @@
+{
+  "organization": "Sdog Farm Software Factory",
+  "tenant": "sadogfarm.onmicrosoft.com",
+  "azure_foundry_hub": "Sdog Farm Software Factory",
+  "data_boundary": "EU",
+  "ports": {
+    "fcc_server": 8082,
+    "backend_fastapi": 8000
+  },
+  "endpoints": {
+    "fcc_server": "http://127.0.0.1:8082",
+    "backend_fastapi": "http://127.0.0.1:8000"
+  },
+  "database_path": "",
+  "refresh_interval_ms": 5000,
+  "default_page_size": 50,
+  "theme": "dark_pro"
+}
