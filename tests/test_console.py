@@ -77,6 +77,17 @@ def test_desktop_console_headless_lifecycle():
         ok, latency, msg = app._ping_port("127.0.0.1", 65432)
         assert isinstance(ok, bool)
         assert isinstance(latency, float)
+
+        # Probar resolucion de PR e inspeccion de trazabilidad
+        pr_info = app._get_task_pr_info("TASK-LM-PORCINE-01")
+        assert pr_info["pr_number"] == 199
+        assert "199" in (pr_info["pr_url"] or "")
+
+        app.show_task_details("TASK-LM-PORCINE-01")
+        text_content = app.task_detail_text.get("1.0", "end")
+        assert "EXPEDIENTE TECNICO: TASK-LM-PORCINE-01" in text_content
+        assert "Pull Request GitHub: #199" in text_content
+        assert "Validacion Visual E2E: SUPERADA" in text_content
     finally:
         app.destroy()
 
