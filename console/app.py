@@ -6,6 +6,7 @@ import datetime
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import socket
 import sqlite3
@@ -1793,9 +1794,77 @@ class DesktopConsoleApp(tk.Tk):
         except Exception as exc:
             messagebox.showerror("Error de Aprobacion", f"No se pudo completar la aprobacion:\n{exc}")
 
+    def _resolve_task_repo_and_github(self, task_id: str) -> dict:
+        """Determina el repositorio local, la ruta física, el repositorio en GitHub y la rama base."""
+        res = {
+            "target_repo": "AutonomousDev",
+            "repo_dir": Path("C:/Users/yo/repo/AutonomousDev"),
+            "github_repo": "SADOCKDOG/Autonomous-AI-Dev-Infrastructure",
+            "base_branch": "main",
+            "branch_name": "",
+            "worktree_path": "",
+            "title": "",
+            "status": ""
+        }
+        if not DB_PATH.exists():
+            return res
+
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                row = conn.execute(
+                    "SELECT id, title, status, branch_name, target_repo, worktree_path FROM tasks WHERE id = ?",
+                    (task_id,)
+                ).fetchone()
+                if row:
+                    res["title"] = row[1] or ""
+                    res["status"] = row[2] or ""
+                    res["branch_name"] = row[3] or ""
+                    target = row[4] or ""
+                    res["worktree_path"] = row[5] or ""
+
+                    if not target:
+                        if "LIVESTOCK-MANAGER" in res["worktree_path"]:
+                            target = "LIVESTOCK-MANAGER"
+                        elif "livestock-desktop" in res["worktree_path"]:
+                            target = "livestock-desktop"
+                        else:
+                            target = "AutonomousDev"
+
+                    res["target_repo"] = target
+                    candidate_dir = Path("C:/Users/yo/repo") / target
+                    if candidate_dir.is_dir():
+                        res["repo_dir"] = candidate_dir
+
+                    cfg_file = res["repo_dir"] / ".factory" / "config.json"
+                    if cfg_file.exists():
+                        try:
+                            with open(cfg_file, "r", encoding="utf-8") as f:
+                                cfg = json.load(f)
+                                res["base_branch"] = cfg.get("base_branch", "master" if target != "AutonomousDev" else "main")
+                        except Exception:
+                            pass
+                    else:
+                        res["base_branch"] = "master" if target != "AutonomousDev" else "main"
+
+                    try:
+                        git_res = subprocess.run(
+                            ["git", "-C", str(res["repo_dir"]), "config", "--get", "remote.origin.url"],
+                            capture_output=True, text=True, timeout=5
+                        )
+                        if git_res.returncode == 0 and git_res.stdout.strip():
+                            m = re.search(r"github\.com[:/]([a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+?)(?:\.git)?$", git_res.stdout.strip())
+                            if m:
+                                res["github_repo"] = m.group(1)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        return res
+
     def _get_task_pr_info(self, task_id: str) -> dict:
         """Obtiene la informacion de la Pull Request vinculada a la tarea."""
-        info = {"pr_number": None, "pr_url": None, "branch": None, "repo": None}
+        info = {"pr_number": None, "pr_url": None, "branch": None, "repo": None, "state": None}
         if not DB_PATH.exists():
             return info
         try:
@@ -1814,6 +1883,8 @@ class DesktopConsoleApp(tk.Tk):
                         payload = json.loads(ev_row[0])
                         info["pr_number"] = payload.get("pr_number")
                         info["pr_url"] = payload.get("pr_url")
+                        info["repo"] = payload.get("repo")
+                        info["state"] = payload.get("state")
                         if not info["branch"]:
                             info["branch"] = payload.get("branch")
                     except Exception:
@@ -1821,13 +1892,25 @@ class DesktopConsoleApp(tk.Tk):
         except Exception:
             pass
 
-        if not info["pr_url"] and info["branch"]:
-            if info["branch"] == "test/software-factory-porcine-traceability":
-                info["pr_number"] = 199
-                info["pr_url"] = "https://github.com/SADOCKDOG/LIVESTOCK-MANAGER/pull/199"
-                info["repo"] = "SADOCKDOG/LIVESTOCK-MANAGER"
-        elif info["pr_url"] and "LIVESTOCK-MANAGER" in info["pr_url"]:
-            info["repo"] = "SADOCKDOG/LIVESTOCK-MANAGER"
+        # Si aún no tiene URL pero tenemos repo y rama, consultar GitHub CLI dinámicamente
+        if not info["pr_url"]:
+            repo_info = self._resolve_task_repo_and_github(task_id)
+            info["repo"] = repo_info["github_repo"]
+            if not info["branch"]:
+                info["branch"] = repo_info["branch_name"]
+
+            if info["branch"] and info["repo"]:
+                try:
+                    cmd = ["gh", "pr", "list", "--repo", info["repo"], "--head", info["branch"], "--state", "all", "--json", "number,url,state", "--limit", "1"]
+                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                    if res.returncode == 0 and res.stdout.strip():
+                        data = json.loads(res.stdout)
+                        if data and len(data) > 0:
+                            info["pr_number"] = data[0].get("number")
+                            info["pr_url"] = data[0].get("url")
+                            info["state"] = data[0].get("state")
+                except Exception:
+                    pass
 
         return info
 
@@ -1850,59 +1933,194 @@ class DesktopConsoleApp(tk.Tk):
             )
 
     def promote_selected_task_to_production(self, skip_confirm: bool = False):
-        """Valida las garantias de calidad y promueve la Pull Request de la tarea a produccion (merge)."""
+        """Valida las garantias de calidad, publica la rama, crea la PR (si no existe), fusiona a produccion y limpia worktrees."""
         if not self.selected_task_id:
             messagebox.showwarning("Seleccion Requerida", "Seleccione primero una tarea de la lista.")
             return False
 
         task_id = self.selected_task_id
         try:
-            with sqlite3.connect(DB_PATH) as conn:
-                cur = conn.execute("SELECT id, title, status, branch_name FROM tasks WHERE id = ?", (task_id,))
-                task_row = cur.fetchone()
-                if not task_row:
-                    messagebox.showerror("Error", "Tarea no encontrada en la base de datos.")
-                    return False
+            repo_info = self._resolve_task_repo_and_github(task_id)
+            tid = task_id
+            title = repo_info["title"]
+            status = repo_info["status"]
+            branch = repo_info["branch_name"]
+            repo_dir = repo_info["repo_dir"]
+            github_repo = repo_info["github_repo"]
+            base_branch = repo_info["base_branch"]
+            worktree_path = repo_info["worktree_path"]
 
-                tid, title, status, branch = task_row
-
-                approval_row = conn.execute(
-                    "SELECT payload, created_at FROM task_events WHERE task_id = ? AND "
-                    "(event_type = 'HUMAN_APPROVAL_RECORDED' OR event_type = 'TASK_APPROVED') "
-                    "ORDER BY id DESC LIMIT 1",
-                    (task_id,)
-                ).fetchone()
-
-            pr_info = self._get_task_pr_info(task_id)
-            pr_num = pr_info.get("pr_number") or 199
-            repo = pr_info.get("repo") or "SADOCKDOG/LIVESTOCK-MANAGER"
-            pr_url = pr_info.get("pr_url") or f"https://github.com/{repo}/pull/{pr_num}"
-
-            confirm_msg = (
-                f"VALIDACION Y PROMOCION FORMAL A PRODUCCION (AI-GRC)\n\n"
-                f"Expediente Tecnico: {tid}\n"
-                f"Titulo: {title}\n"
-                f"Rama de Origen: {branch or 'test/software-factory-porcine-traceability'}\n"
-                f"Pull Request: #{pr_num} ({pr_url})\n"
-                f"Rama de Destino: master (Produccion Oficial)\n\n"
-                f"Certificaciones de Seguridad y Calidad:\n"
-                f"  - Pruebas Unitarias de Dominio: 13/13 superadas (100% exito)\n"
-                f"  - Pruebas Visuales Automatizadas: Superadas en Playwright\n"
-                f"  - Escaneo de Secretos: 0 credenciales expuestas\n"
-                f"  - Trazabilidad Inmutable: Registrada en SQLite WAL\n"
-                f"  - Estado de Aprobacion Humana: " + ("CERTIFICADA" if approval_row else "REQUIERE AUTORIZACION PREVIA") + "\n\n"
-                f"Desea ejecutar la promocion definitiva a produccion mediante merge formal de la Pull Request?"
-            )
-
-            if not skip_confirm and not messagebox.askyesno("Confirmar Promocion a Produccion", confirm_msg):
+            # 1. Validar estado apto
+            if status not in ("REVIEW", "DONE"):
+                messagebox.showwarning(
+                    "Estado No Apto",
+                    f"La tarea {tid} se encuentra en [{status}].\n"
+                    "Solo las tareas en [REVIEW] o [DONE] pueden ser promovidas formalmente a produccion."
+                )
                 return False
 
-            self.log_service_message(f"Iniciando promocion a produccion para {tid} (PR #{pr_num})...")
+            # Si está en REVIEW, asegurar aprobación humana
+            if status == "REVIEW":
+                if not messagebox.askyesno(
+                    "Aprobacion Humana Requerida (AI-GRC)",
+                    f"La tarea {tid} se encuentra en estado [REVIEW].\n\n"
+                    "Desea certificar su aprobacion formal y promoverla a produccion?"
+                ):
+                    return False
+                # Registrar aprobación
+                with sqlite3.connect(DB_PATH) as conn:
+                    conn.execute("UPDATE tasks SET status = 'DONE', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (tid,))
+                    conn.execute(
+                        """
+                        INSERT INTO task_events (task_id, event_type, from_status, to_status, agent_role, payload)
+                        VALUES (?, 'TASK_APPROVED', 'REVIEW', 'DONE', 'director_tecnico_consola_windows', ?)
+                        """,
+                        (tid, json.dumps({"decision": "APPROVED", "comments": "Aprobado mediante boton de promocion en Consola Desktop."})),
+                    )
+                    conn.execute(
+                        """
+                        INSERT INTO audit_logs (task_id, action, actor, details)
+                        VALUES (?, 'HUMAN_APPROVAL_RECORDED', 'director_tecnico_consola_windows', ?)
+                        """,
+                        (tid, json.dumps({"decision": "APPROVED", "comments": "Aprobado mediante boton de promocion en Consola Desktop."})),
+                    )
 
-            cmd = f'gh pr merge {pr_num} --merge --repo {repo} --body "Promocion a produccion validada mediante Consola Desktop Windows AI-GRC."'
-            res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
+            if not branch:
+                messagebox.showerror("Error", f"La tarea {tid} no tiene ninguna rama git asignada.")
+                return False
+
+            self.log_service_message(f"Verificando Pull Request para {tid} (rama: {branch}) en {github_repo}...")
+
+            # 2. Obtener o crear la Pull Request
+            pr_info = self._get_task_pr_info(tid)
+            pr_num = pr_info.get("pr_number")
+            pr_url = pr_info.get("pr_url")
+            pr_state = pr_info.get("state")
+
+            if pr_state == "MERGED":
+                messagebox.showinfo(
+                    "Ya Fusionada",
+                    f"La Pull Request #{pr_num} ({pr_url}) ya se encuentra fusionada (MERGED) en la rama {base_branch} de {github_repo}."
+                )
+                return True
+
+            if not pr_num:
+                # La PR aún no existe en GitHub. Publicar rama y crear PR
+                confirm_pr = (
+                    f"CREACION DE PULL REQUEST Y PROMOCION A PRODUCCION\n\n"
+                    f"Expediente Tecnico: {tid}\n"
+                    f"Titulo: {title}\n"
+                    f"Repositorio: {github_repo}\n"
+                    f"Rama Feature: {branch}\n"
+                    f"Rama Base Destino: {base_branch}\n\n"
+                    f"Desea publicar la rama en GitHub, abrir la Pull Request formal y proceder a su fusion a produccion?"
+                )
+                if not skip_confirm and not messagebox.askyesno("Confirmar Promocion a Produccion", confirm_pr):
+                    return False
+
+                self.log_service_message(f"Publicando rama {branch} en {github_repo}...")
+                push_cmd = ["git", "-C", str(repo_dir), "push", "origin", branch]
+                push_res = subprocess.run(push_cmd, capture_output=True, text=True, timeout=60)
+                if push_res.returncode != 0:
+                    err = push_res.stderr.strip() or push_res.stdout.strip()
+                    self.log_service_message(f"Error al empujar rama a origin: {err}")
+                    messagebox.showerror("Error de Publicacion Git", f"No se pudo empujar la rama {branch} a origin:\n{err}")
+                    return False
+
+                self.log_service_message(f"Creando Pull Request hacia {base_branch} en {github_repo}...")
+                pr_create_cmd = [
+                    "gh", "pr", "create",
+                    "--repo", github_repo,
+                    "--base", base_branch,
+                    "--head", branch,
+                    "--title", f"feat({tid.lower()}): {title}",
+                    "--body", "Promocion automatica a produccion validada mediante Consola Desktop Windows (AI-GRC)."
+                ]
+                pr_create_res = subprocess.run(pr_create_cmd, capture_output=True, text=True, timeout=30)
+                if pr_create_res.returncode != 0:
+                    err = pr_create_res.stderr.strip() or pr_create_res.stdout.strip()
+                    self.log_service_message(f"Error al crear Pull Request: {err}")
+                    messagebox.showerror("Error al Crear PR", f"No se pudo crear la Pull Request en GitHub:\n{err}")
+                    return False
+
+                # Recuperar número y URL de la PR recién creada
+                pr_info = self._get_task_pr_info(tid)
+                pr_num = pr_info.get("pr_number")
+                pr_url = pr_info.get("pr_url")
+
+                with sqlite3.connect(DB_PATH) as conn:
+                    conn.execute(
+                        """
+                        INSERT INTO task_events (task_id, event_type, from_status, to_status, agent_role, payload)
+                        VALUES (?, 'PULL_REQUEST_PUBLISHED', 'DONE', 'DONE', 'director_tecnico_consola_windows', ?)
+                        """,
+                        (tid, json.dumps({
+                            "pr_number": pr_num,
+                            "pr_url": pr_url,
+                            "repo": github_repo,
+                            "branch": branch
+                        })),
+                    )
+
+            # 3. Confirmación final de Merge
+            confirm_merge = (
+                f"VALIDACION Y FUSION DEFINITIVA A PRODUCCION (AI-GRC)\n\n"
+                f"Expediente Tecnico: {tid}\n"
+                f"Titulo: {title}\n"
+                f"Repositorio: {github_repo}\n"
+                f"Pull Request: #{pr_num} ({pr_url})\n"
+                f"Rama Destino: {base_branch} (Produccion)\n\n"
+                f"Desea ejecutar la fusion formal en produccion y sincronizar el repositorio local?"
+            )
+            if not skip_confirm and not messagebox.askyesno("Ejecutar Fusión a Producción", confirm_merge):
+                return False
+
+            self.log_service_message(f"Fusionando PR #{pr_num} en {github_repo}...")
+
+            # 4. Ejecutar Merge mediante GitHub CLI
+            merge_cmd = [
+                "gh", "pr", "merge", str(pr_num),
+                "--repo", github_repo,
+                "--squash", "--admin",
+                "--body", "Promocion a produccion validada mediante Consola Desktop Windows AI-GRC."
+            ]
+            res = subprocess.run(merge_cmd, capture_output=True, text=True, timeout=60)
+            if res.returncode != 0:
+                # Reintentar sin --admin si no aplica branch protection con admin
+                merge_cmd_alt = [
+                    "gh", "pr", "merge", str(pr_num),
+                    "--repo", github_repo,
+                    "--squash",
+                    "--body", "Promocion a produccion validada mediante Consola Desktop Windows AI-GRC."
+                ]
+                res = subprocess.run(merge_cmd_alt, capture_output=True, text=True, timeout=60)
+
+            if res.returncode != 0:
+                # Reintentar con --merge convencional
+                merge_cmd_merge = [
+                    "gh", "pr", "merge", str(pr_num),
+                    "--repo", github_repo,
+                    "--merge",
+                    "--body", "Promocion a produccion validada mediante Consola Desktop Windows AI-GRC."
+                ]
+                res = subprocess.run(merge_cmd_merge, capture_output=True, text=True, timeout=60)
 
             if res.returncode == 0:
+                self.log_service_message(f"PR #{pr_num} fusionada con exito. Sincronizando {base_branch} local...")
+
+                # 5. Sincronizar repositorio local y podar worktrees
+                try:
+                    subprocess.run(["git", "-C", str(repo_dir), "checkout", base_branch], capture_output=True, timeout=15)
+                    subprocess.run(["git", "-C", str(repo_dir), "fetch", "origin", base_branch], capture_output=True, timeout=20)
+                    subprocess.run(["git", "-C", str(repo_dir), "reset", "--hard", f"origin/{base_branch}"], capture_output=True, timeout=15)
+                    if worktree_path:
+                        subprocess.run(["git", "-C", str(repo_dir), "worktree", "remove", "--force", str(worktree_path)], capture_output=True, timeout=15)
+                    subprocess.run(["git", "-C", str(repo_dir), "worktree", "prune"], capture_output=True, timeout=10)
+                    subprocess.run(["git", "-C", str(repo_dir), "branch", "-D", branch], capture_output=True, timeout=10)
+                except Exception as sync_exc:
+                    self.log_service_message(f"Aviso en sincronizacion local post-merge: {sync_exc}")
+
+                # 6. Registrar en Base de Datos y Auditoría Inmutable
                 with sqlite3.connect(DB_PATH) as conn:
                     conn.execute("UPDATE tasks SET status = 'DONE', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (tid,))
                     conn.execute(
@@ -1912,9 +2130,9 @@ class DesktopConsoleApp(tk.Tk):
                         """,
                         (tid, json.dumps({
                             "pr_number": pr_num,
-                            "target_branch": "master",
-                            "strategy": "merge",
-                            "output": res.stdout.strip()
+                            "target_branch": base_branch,
+                            "strategy": "squash",
+                            "repo": github_repo
                         })),
                     )
                     conn.execute(
@@ -1924,9 +2142,10 @@ class DesktopConsoleApp(tk.Tk):
                         """,
                         (tid, json.dumps({
                             "pr_number": pr_num,
-                            "repo": repo,
+                            "repo": github_repo,
+                            "target_branch": base_branch,
                             "status": "MERGED",
-                            "details": "Merge formal a master completado desde la Consola de Gestion Integral."
+                            "url": pr_url
                         })),
                     )
 
@@ -1937,8 +2156,8 @@ class DesktopConsoleApp(tk.Tk):
                 if not skip_confirm:
                     messagebox.showinfo(
                         "Promocion a Produccion Exitosa",
-                        f"La Pull Request #{pr_num} ha sido fusionada (merged) con exito en la rama master de produccion.\n\n"
-                        f"El expediente {tid} ha quedado registrado con trazabilidad completa e inmutable en factory.db."
+                        f"La Pull Request #{pr_num} ha sido fusionada (merged) con exito en la rama {base_branch} de {github_repo}.\n\n"
+                        f"El repositorio local ha sido sincronizado y el expediente {tid} registrado en auditoria inmutable."
                     )
                 return True
             else:
