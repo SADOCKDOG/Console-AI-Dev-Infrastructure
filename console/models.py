@@ -62,11 +62,12 @@ CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
 
 
 def init_local_db(target_path: Path) -> None:
-    """Inicializa la base de datos SQLite con modo WAL y crea el esquema si no existe."""
+    """Inicializa la base de datos SQLite con modo DELETE y crea el esquema si no existe."""
     target_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(target_path)
+    conn = sqlite3.connect(target_path, timeout=30.0)
     try:
-        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA busy_timeout=30000;")
+        conn.execute("PRAGMA journal_mode=DELETE;")
         conn.execute("PRAGMA foreign_keys=ON;")
         conn.executescript(LOCAL_SCHEMA_SQL)
     finally:
