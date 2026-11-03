@@ -33,7 +33,10 @@ El filtro de Console en la base revisada enumera `BACKLOG`, `READY`, `PLANNING`,
 - **Diseño documental:** Owner Authorization y DOI según las referencias Factory.
 - **Comportamiento de Console en la base:** aprobación local directa y promoción que puede publicar/crear PR, fusionar y realizar sincronización/limpieza; véase §2.
 - **Implementación FIDO/API entregada por esta PR:** ninguna; esta PR es documental y no contiene esos archivos ni código.
-- **DOI / validación operativa de Owner Authorization:** no se afirma como operativo ni como probado por esta revisión. No se ejecutaron pruebas operativas.
+- **Estado explícito:** diseño documentado; integración del desarrollo pendiente de revisión; validación operativa pendiente.
+- **PR de desarrollo:** no se identificó una PR de implementación de Owner Authorization en los listados completos de PR de Factory y Console consultados. Los archivos locales citados en §3 no están ligados a una rama/PR remota identificable; esa relación queda **no verificada**.
+- **Alcance de esta PR:** solo documental; no implementa ni corrige el gap entre el diseño y el comportamiento de la base, y no valida la seguridad de Console.
+- **DOI / validación operativa de Owner Authorization:** no se afirma como operativo ni como probado. No se ejecutaron pruebas operativas.
 
 ## 6. Reserva D2-A
 

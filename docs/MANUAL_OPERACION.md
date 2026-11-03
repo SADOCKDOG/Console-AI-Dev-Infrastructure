@@ -154,5 +154,7 @@ Estas referencias describen el diseño; no acreditan un DOI operativo ni rutas A
 
 - Esta PR cambia solo documentación. No añade cliente API, firmante FIDO, broker ni cambios del comportamiento descrito en §6.
 - Los archivos locales `console/owner_auth_client.py` y `console/owner_signer.py` no están incluidos en la PR ni en la base revisada; su presencia en un checkout local no acredita capacidades entregadas.
+- **Estado:** diseño documentado; integración del desarrollo pendiente de revisión; validación operativa pendiente.
+- Esta PR documental no implementa ni corrige el gap entre el diseño y el comportamiento de la base, ni valida la seguridad de Console.
 - No se ejecutaron pruebas operativas de FIDO, Owner Authorization o DOI para esta revisión.
 - D2A-02 y D2A-03 permanecen **parciales**: dos copias P1-A3 difieren de sus originales.

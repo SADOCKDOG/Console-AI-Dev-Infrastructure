@@ -164,6 +164,8 @@ Factory documenta el diseño objetivo Owner (FIDO) → App Exec → GitHub merge
 - **Archivos locales excluidos:** `console/owner_auth_client.py` y `console/owner_signer.py` existen solo en el checkout local de trabajo; no están incluidos en esta PR ni en la base revisada y no acreditan capacidades entregadas.
 - **Estado del DOI:** previsto en el diseño; no se afirma como operativo ni probado por esta entrega documental.
 
+**Estado explícito:** diseño documentado; integración del desarrollo pendiente de revisión; validación operativa pendiente. Esta PR es solo documental: no implementa ni corrige el gap descrito, y no valida la seguridad de Console.
+
 Referencias: [documentación de autorización y contraste de comportamiento](docs/OWNER_AUTHORIZATION.md), [manual operativo](docs/MANUAL_OPERACION.md) y [fuentes canónicas de Factory](https://github.com/SADOCKDOG/Autonomous-AI-Dev-Infrastructure/blob/main/docs/OWNER_AUTHORIZATION.md).
 
 ---
