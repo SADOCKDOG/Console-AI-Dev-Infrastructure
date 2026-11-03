@@ -140,6 +140,7 @@ AutonomousDevConsole/
 │   ├── ARQUITECTURA.md
 │   ├── GUIA_VALIDACION.md
 │   ├── MANUAL_OPERACION.md
+│   ├── OWNER_AUTHORIZATION.md
 │   └── screenshots/
 │       ├── consola_servicios_salud.png
 │       └── consola_code_sessions_agentes.png
@@ -154,6 +155,20 @@ AutonomousDevConsole/
 
 ---
 
-## 7. Licencia
+## 7. Autorización de Propietario (Owner-Only Authorization) y Relación con la Factoría
+
+La Consola gestiona la separación de identidades y la autorización de propietario (Owner-Only Authorization) para la integración de Pull Requests dentro de la *Sdog Farm Software Factory*:
+
+- **Relación con la Factoría:** la Consola se comunica con el backend FastAPI del repositorio `Autonomous-AI-Dev-Infrastructure` (`127.0.0.1:8000`) mediante el contrato de autorizaciones (`/api/v1/owner-authorizations/*`), con persistencia en el SQLite WAL (`factory.db`) de la factoría.
+- **Flujo:** la tarea debe estar en estado `REVIEW` con Pull Request registrada; el propietario revisa el snapshot de la PR, firma con FIDO (broker) y autoriza o ejecuta el merge con alcance limitado al merge de esa PR.
+- **Integración futura con el DOI:** delegación de merge al intermediario de operaciones de desarrollo (Dev Operations Intermediary).
+
+Documentación de referencia: [docs/OWNER_AUTHORIZATION.md](docs/OWNER_AUTHORIZATION.md) · [docs/MANUAL_OPERACION.md](docs/MANUAL_OPERACION.md).
+
+**Estado de capacidades:** documentación y alcance local fail-closed. No constituye DOI operativo, activación de Apps, credenciales, permisos ni autorización operativa del propietario.
+
+---
+
+## 8. Licencia
 
 Distribuido bajo licencia MIT. Consulte el archivo `LICENSE` para mas detalles.
