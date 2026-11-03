@@ -155,17 +155,16 @@ AutonomousDevConsole/
 
 ---
 
-## 7. Autorización de Propietario (Owner-Only Authorization) y Relación con la Factoría
+## 7. Diseño de autorización de propietario y comportamiento actual
 
-La Consola gestiona la separación de identidades y la autorización de propietario (Owner-Only Authorization) para la integración de Pull Requests dentro de la *Sdog Farm Software Factory*:
+Factory documenta el diseño objetivo Owner (FIDO) → App Exec → GitHub merge y un DOI previsto. Estas referencias son de diseño; no acreditan que el contrato API esté desplegado ni que el flujo esté disponible en Console.
 
-- **Relación con la Factoría:** la Consola se comunica con el backend FastAPI del repositorio `Autonomous-AI-Dev-Infrastructure` (`127.0.0.1:8000`) mediante el contrato de autorizaciones (`/api/v1/owner-authorizations/*`), con persistencia en el SQLite WAL (`factory.db`) de la factoría.
-- **Flujo:** la tarea debe estar en estado `REVIEW` con Pull Request registrada; el propietario revisa el snapshot de la PR, firma con FIDO (broker) y autoriza o ejecuta el merge con alcance limitado al merge de esa PR.
-- **Integración futura con el DOI:** delegación de merge al intermediario de operaciones de desarrollo (Dev Operations Intermediary).
+- **Comportamiento en la base revisada:** `console/app.py` permite confirmar desde la interfaz una aprobación `REVIEW` que escribe directamente `DONE`. La promoción también contempla publicar la rama, crear una PR si falta, fusionarla mediante GitHub CLI y sincronizar/limpiar recursos locales.
+- **Diferencia de seguridad:** ese comportamiento no exige la autorización FIDO descrita por el diseño Factory y no debe tratarse como protección Owner-Only Authorization.
+- **Archivos locales excluidos:** `console/owner_auth_client.py` y `console/owner_signer.py` existen solo en el checkout local de trabajo; no están incluidos en esta PR ni en la base revisada y no acreditan capacidades entregadas.
+- **Estado del DOI:** previsto en el diseño; no se afirma como operativo ni probado por esta entrega documental.
 
-Documentación de referencia: [docs/OWNER_AUTHORIZATION.md](docs/OWNER_AUTHORIZATION.md) · [docs/MANUAL_OPERACION.md](docs/MANUAL_OPERACION.md).
-
-**Estado de capacidades:** documentación y alcance local fail-closed. No constituye DOI operativo, activación de Apps, credenciales, permisos ni autorización operativa del propietario.
+Referencias: [documentación de autorización y contraste de comportamiento](docs/OWNER_AUTHORIZATION.md), [manual operativo](docs/MANUAL_OPERACION.md) y [fuentes canónicas de Factory](https://github.com/SADOCKDOG/Autonomous-AI-Dev-Infrastructure/blob/main/docs/OWNER_AUTHORIZATION.md).
 
 ---
 

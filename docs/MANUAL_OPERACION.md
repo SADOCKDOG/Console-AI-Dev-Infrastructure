@@ -121,45 +121,38 @@ Permite consultar la pista forense completa y exportar informes ejecutivos.
 
 ---
 
-## 6. Autorizacion de Propietario y Proceso de Merge con Pull Request (Owner-Only Authorization)
+## 6. Autorización de propietario: diseño y comportamiento de la base revisada
 
-La consola no integra codigo ni ejecuta operaciones de integracion sin la autorizacion firmada del propietario. El flujo documentado es el siguiente:
+Esta sección describe el código de Console en la base `c67d62ab12103752071f9fbfa2b317ae3d470062`; no es una garantía de seguridad ni un procedimiento que afirme Owner-Only Authorization operativo.
 
-1. **Prerequisito de estado:** la tarea seleccionada debe estar en estado `REVIEW`. Solo en `REVIEW` se permite iniciar la revision de PR y la aprobacion humana.
-2. **Prerequisito de PR:** la tarea debe tener una Pull Request registrada en la base de datos (`PULL_REQUEST_PUBLISHED`); la consola no publica ramas ni crea PRs automaticamente.
-3. **Revision del propietario:** mediante el flujo de owner authorization, el propietario revisa el snapshot de la PR (HEAD SHA, Base, diff manifest SHA-256, checks, branch protection) antes de firmar.
-4. **Firma FIDO (broker):** el propietario confirma el payload exacto (incluyendo el sufijo del SHA del HEAD) y firma con llave OpenSSH FIDO mediante broker interactivo. Ante cualquier error o cancelacion: **fail-closed** (denegar, sin fallback).
-5. **Opciones de integracion:**
-   - **AUTORIZAR SOLO PROPIETARIO:** el propietario autoriza el merge con alcance limitado a `MERGE this PR only` (sin despliegue, sincronizacion ni limpieza).
-   - **DELEGAR MERGE AL AGENTE:** delegacion habilitada unicamente dentro del allowlist del Dev Operations Intermediary (DOI); la firma FIDO del propietario sigue siendo obligatoria.
-6. **Ejecucion de merge:** mediante `PROMOVER A PRODUCCION (MERGE PR)` con autorizacion `ACTIVE` vigente; la tarea permanece en `REVIEW` hasta que GitHub confirme el merge.
-7. **Revocacion:** mediante `REVOCAR OWNER AUTH` (requiere nueva firma FIDO del propietario).
-8. **Restricciones:** no se ejecutan operaciones automaticas de integracion (`skip_confirm` esta deshabilitado); no se ejecuta sync, deploy ni cleanup.
+1. **Aprobación local:** si la tarea está en `REVIEW`, `APROBACION HUMANA (AI-GRC)` presenta una confirmación y luego actualiza la tarea localmente a `DONE`, registrando eventos. Ese camino no exige firma FIDO ni espera confirmación de merge de GitHub.
+2. **Promoción:** `PROMOVER A PRODUCCION (MERGE PR)` contempla publicar la rama y crear una PR si no existe. Para fusionar invoca GitHub CLI con `--admin` y contempla alternativas de merge.
+3. **Efectos locales:** tras una fusión exitosa, el código intenta sincronizar el repositorio (`checkout`, `fetch`, `reset --hard`) y limpiar worktrees y ramas.
+4. **Confirmación:** la interfaz normal llama la función con su valor por defecto, que muestra confirmaciones. El parámetro `skip_confirm=True` existe y omite esos diálogos; no está deshabilitado en la función.
 
-Detalle completo: [OWNER_AUTHORIZATION.md](OWNER_AUTHORIZATION.md).
+Por tanto, el comportamiento de esta base no aplica el diseño FIDO/DOI de Factory. No interpretes la confirmación local de `DONE` como prueba de aprobación firmada o de merge.
 
 ---
 
 ## 7. Estados de Tareas y de Agentes
 
-- **Estados de tarea (Kanban):** `BACKLOG`, `READY`, `PLANNING`, `IN_PROGRESS`, `TESTING`, `REVIEW`, `DONE`, `BLOCKED`.
-- **Ciclo de vida:** las fases previas a `REVIEW` representan trabajo de diseno/planificacion/testing; `REVIEW` es el estado de control de calidad previo a la aprobacion humana.
-- **Transicion a `DONE`:** unicamente mediante aprobacion humana firmada (AI-GRC Gate). Las transiciones fuera de `REVIEW` quedan bloqueadas.
-- **Roles de agente:** Arquitecto de Software, Analista de Requerimientos, Desarrollador Full-Stack, Ingeniero QA / Tester, Auditor AI-GRC & Seguridad, Project Manager.
+- **Estados que muestra el filtro:** `BACKLOG`, `READY`, `PLANNING`, `IN_PROGRESS`, `TESTING`, `REVIEW`, `DONE`, `BLOCKED`.
+- En la base revisada, la aprobación de una tarea `REVIEW` puede cambiarla directamente a `DONE`; no se exige que GitHub haya confirmado previamente el merge.
+- **Roles de agente mostrados:** Arquitecto de Software, Analista de Requerimientos, Desarrollador Full-Stack, Ingeniero QA / Tester, Auditor AI-GRC & Seguridad, Project Manager.
 
 ---
 
-## 8. Integracion Futura con el Dev Operations Intermediary (DOI)
+## 8. Diseño futuro de Owner Authorization y DOI
 
-- El DOI se prevé como canal unico de intermediacion entre agente y GitHub para operaciones de desarrollo.
-- La consola incorpora el punto de delegacion de merge (`DELEGAR MERGE AL AGENTE`) que se materializara sobre el contrato del DOI.
-- Hasta que el DOI este operativo, la consola opera con el contrato local fail-closed descrito en [OWNER_AUTHORIZATION.md](OWNER_AUTHORIZATION.md).
+Factory documenta como diseño objetivo la autorización del propietario ligada a PR/SHA mediante FIDO y la intermediación DOI. Consulta [Owner Authorization de Factory](https://github.com/SADOCKDOG/Autonomous-AI-Dev-Infrastructure/blob/main/docs/OWNER_AUTHORIZATION.md), [diseño DOI](https://github.com/SADOCKDOG/Autonomous-AI-Dev-Infrastructure/blob/main/docs/security/DEV_OPERATIONS_INTERMEDIARY.md) y [especificaciones DOI](https://github.com/SADOCKDOG/Autonomous-AI-Dev-Infrastructure/tree/main/docs/specifications/doi/).
+
+Estas referencias describen el diseño; no acreditan un DOI operativo ni rutas API desplegadas en la base de Console revisada.
 
 ---
 
-## 9. Estado de Capacidades (Consola)
+## 9. Estado y límites de la documentación
 
-- **Documentacion:** esta manual y documentos derivados (`ARQUITECTURA.md`, `GUIA_VALIDACION.md`, `OWNER_AUTHORIZATION.md`).
-- **Implementacion local:** cliente y firmante FIDO, contrato contra la factoria.
-- **Validacion operativa / DOI operativo / activacion:** no ejecutada ni activada en esta fase.
-- **Aprobacion del propietario:** no registrada como autorizacion operativa.
+- Esta PR cambia solo documentación. No añade cliente API, firmante FIDO, broker ni cambios del comportamiento descrito en §6.
+- Los archivos locales `console/owner_auth_client.py` y `console/owner_signer.py` no están incluidos en la PR ni en la base revisada; su presencia en un checkout local no acredita capacidades entregadas.
+- No se ejecutaron pruebas operativas de FIDO, Owner Authorization o DOI para esta revisión.
+- D2A-02 y D2A-03 permanecen **parciales**: dos copias P1-A3 difieren de sus originales.
