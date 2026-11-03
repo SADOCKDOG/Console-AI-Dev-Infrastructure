@@ -140,6 +140,7 @@ AutonomousDevConsole/
 │   ├── ARQUITECTURA.md
 │   ├── GUIA_VALIDACION.md
 │   ├── MANUAL_OPERACION.md
+│   ├── OWNER_AUTHORIZATION.md
 │   └── screenshots/
 │       ├── consola_servicios_salud.png
 │       └── consola_code_sessions_agentes.png
@@ -154,6 +155,21 @@ AutonomousDevConsole/
 
 ---
 
-## 7. Licencia
+## 7. Diseño de autorización de propietario y comportamiento actual
+
+Factory documenta el diseño objetivo Owner (FIDO) → App Exec → GitHub merge y un DOI previsto. Estas referencias son de diseño; no acreditan que el contrato API esté desplegado ni que el flujo esté disponible en Console.
+
+- **Comportamiento en la base revisada:** `console/app.py` permite confirmar desde la interfaz una aprobación `REVIEW` que escribe directamente `DONE`. La promoción también contempla publicar la rama, crear una PR si falta, fusionarla mediante GitHub CLI y sincronizar/limpiar recursos locales.
+- **Diferencia de seguridad:** ese comportamiento no exige la autorización FIDO descrita por el diseño Factory y no debe tratarse como protección Owner-Only Authorization.
+- **Archivos locales excluidos:** `console/owner_auth_client.py` y `console/owner_signer.py` existen solo en el checkout local de trabajo; no están incluidos en esta PR ni en la base revisada y no acreditan capacidades entregadas.
+- **Estado del DOI:** previsto en el diseño; no se afirma como operativo ni probado por esta entrega documental.
+
+**Estado explícito:** diseño documentado; integración del desarrollo pendiente de revisión; validación operativa pendiente. Esta PR es solo documental: no implementa ni corrige el gap descrito, y no valida la seguridad de Console.
+
+Referencias: [documentación de autorización y contraste de comportamiento](docs/OWNER_AUTHORIZATION.md), [manual operativo](docs/MANUAL_OPERACION.md) y [fuentes canónicas de Factory](https://github.com/SADOCKDOG/Autonomous-AI-Dev-Infrastructure/blob/main/docs/OWNER_AUTHORIZATION.md).
+
+---
+
+## 8. Licencia
 
 Distribuido bajo licencia MIT. Consulte el archivo `LICENSE` para mas detalles.

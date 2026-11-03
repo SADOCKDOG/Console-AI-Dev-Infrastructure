@@ -59,7 +59,7 @@ Permite supervisar el ciclo de vida de los requerimientos y emitir aprobaciones 
 
 1. **Filtrado:**
    - Selector **Proyecto Activo:** Filtra entre *Todos los Proyectos*, *Livestock Manager*, *Infrastructure Core* o *Sdog Farm Software Factory*.
-   - Selector **Filtro Estado:** Filtra por estados Kanban (`BACKLOG`, `TODO`, `IN_PROGRESS`, `IN_REVIEW`, `APPROVAL_PENDING`, `DONE`).
+   - Selector **Filtro Estado:** Filtra por estados Kanban (`BACKLOG`, `READY`, `PLANNING`, `IN_PROGRESS`, `TESTING`, `REVIEW`, `DONE`, `BLOCKED`). El detalle del ciclo y la barrera de aprobacion humana se define en la [seccion 7](#7-estados-de-tareas-y-de-agentes).
 2. **Creacion de Nuevas Tareas:**
    - Pulsar el boton `+ NUEVA TAREA`.
    - Completar el titulo y la descripcion tecnica de los requerimientos.
@@ -68,10 +68,10 @@ Permite supervisar el ciclo de vida de los requerimientos y emitir aprobaciones 
    - Pulsar `CREAR TAREA EN BACKLOG`. La tarea quedara registrada con identificador unico y trazabilidad auditada.
 3. **Inspeccion de Expedientes Tecnicos:**
    - Al seleccionar cualquier tarea en la tabla izquierda, el panel derecho desplegara el expediente completo: metadatos, rama Git, worktree aislado, criterios normativos de aceptacion y el historial de transiciones de agentes.
-4. **Barrera de Aprobacion Humana (AI-GRC Gate):**
-   - Para promover una tarea a produccion, el estado debe ser `REVIEW`.
-   - Seleccionar la tarea y pulsar `APROBACION HUMANA (AI-GRC)`.
-   - Confirmar el cuadro de dialogo. El sistema actualizara el estado a `DONE` y firmara una entrada inmutable en `audit_logs` con rol `director_tecnico_consola_windows`.
+4. **Aprobación local de tarea (no equivale a autorización FIDO ni a merge):**
+   - Para usar `APROBACION HUMANA (AI-GRC)`, el estado debe ser `REVIEW`.
+   - Seleccionar la tarea y confirmar el cuadro de diálogo.
+   - En la base revisada, la consola actualiza el estado local a `DONE` e inserta registros en `task_events` y `audit_logs` con el actor `director_tecnico_consola_windows`. Esto no acredita una firma criptográfica ni que GitHub haya confirmado un merge; véase la sección 6.
 
 ---
 
@@ -118,3 +118,43 @@ Permite consultar la pista forense completa y exportar informes ejecutivos.
 2. **Exportacion de Informes de Cumplimiento:**
    - En la cabecera superior derecha de la aplicacion, pulsar el boton verde `EXPORTAR INFORME AI-GRC`.
    - La aplicacion consolidara las metricas de la factoria, el inventario de tareas por estado, el registro de incidencias y las firmas de aprobacion humana en un informe estructurado Markdown guardado en la carpeta `reports/`.
+
+---
+
+## 6. Autorización de propietario: diseño y comportamiento de la base revisada
+
+Esta sección describe el código de Console en la base `c67d62ab12103752071f9fbfa2b317ae3d470062`; no es una garantía de seguridad ni un procedimiento que afirme Owner-Only Authorization operativo.
+
+1. **Aprobación local:** si la tarea está en `REVIEW`, `APROBACION HUMANA (AI-GRC)` presenta una confirmación y luego actualiza la tarea localmente a `DONE`, registrando eventos. Ese camino no exige firma FIDO ni espera confirmación de merge de GitHub.
+2. **Promoción:** `PROMOVER A PRODUCCION (MERGE PR)` contempla publicar la rama y crear una PR si no existe. Para fusionar invoca GitHub CLI con `--admin` y contempla alternativas de merge.
+3. **Efectos locales:** tras una fusión exitosa, el código intenta sincronizar el repositorio (`checkout`, `fetch`, `reset --hard`) y limpiar worktrees y ramas.
+4. **Confirmación:** la interfaz normal llama la función con su valor por defecto, que muestra confirmaciones. El parámetro `skip_confirm=True` existe y omite esos diálogos; no está deshabilitado en la función.
+
+Por tanto, el comportamiento de esta base no aplica el diseño FIDO/DOI de Factory. No interpretes la confirmación local de `DONE` como prueba de aprobación firmada o de merge.
+
+---
+
+## 7. Estados de Tareas y de Agentes
+
+- **Estados que muestra el filtro:** `BACKLOG`, `READY`, `PLANNING`, `IN_PROGRESS`, `TESTING`, `REVIEW`, `DONE`, `BLOCKED`.
+- En la base revisada, la aprobación de una tarea `REVIEW` puede cambiarla directamente a `DONE`; no se exige que GitHub haya confirmado previamente el merge.
+- **Roles de agente mostrados:** Arquitecto de Software, Analista de Requerimientos, Desarrollador Full-Stack, Ingeniero QA / Tester, Auditor AI-GRC & Seguridad, Project Manager.
+
+---
+
+## 8. Diseño futuro de Owner Authorization y DOI
+
+Factory documenta como diseño objetivo la autorización del propietario ligada a PR/SHA mediante FIDO y la intermediación DOI. Consulta [Owner Authorization de Factory](https://github.com/SADOCKDOG/Autonomous-AI-Dev-Infrastructure/blob/main/docs/OWNER_AUTHORIZATION.md), [diseño DOI](https://github.com/SADOCKDOG/Autonomous-AI-Dev-Infrastructure/blob/main/docs/security/DEV_OPERATIONS_INTERMEDIARY.md) y [especificaciones DOI](https://github.com/SADOCKDOG/Autonomous-AI-Dev-Infrastructure/tree/main/docs/specifications/doi/).
+
+Estas referencias describen el diseño; no acreditan un DOI operativo ni rutas API desplegadas en la base de Console revisada.
+
+---
+
+## 9. Estado y límites de la documentación
+
+- Esta PR cambia solo documentación. No añade cliente API, firmante FIDO, broker ni cambios del comportamiento descrito en §6.
+- Los archivos locales `console/owner_auth_client.py` y `console/owner_signer.py` no están incluidos en la PR ni en la base revisada; su presencia en un checkout local no acredita capacidades entregadas.
+- **Estado:** diseño documentado; integración del desarrollo pendiente de revisión; validación operativa pendiente.
+- Esta PR documental no implementa ni corrige el gap entre el diseño y el comportamiento de la base, ni valida la seguridad de Console.
+- No se ejecutaron pruebas operativas de FIDO, Owner Authorization o DOI para esta revisión.
+- D2A-02 y D2A-03 permanecen **parciales**: dos copias P1-A3 difieren de sus originales.
