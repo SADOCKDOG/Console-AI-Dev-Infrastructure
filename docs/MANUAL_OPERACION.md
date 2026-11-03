@@ -68,10 +68,10 @@ Permite supervisar el ciclo de vida de los requerimientos y emitir aprobaciones 
    - Pulsar `CREAR TAREA EN BACKLOG`. La tarea quedara registrada con identificador unico y trazabilidad auditada.
 3. **Inspeccion de Expedientes Tecnicos:**
    - Al seleccionar cualquier tarea en la tabla izquierda, el panel derecho desplegara el expediente completo: metadatos, rama Git, worktree aislado, criterios normativos de aceptacion y el historial de transiciones de agentes.
-4. **Barrera de Aprobacion Humana (AI-GRC Gate):**
-   - Para promover una tarea a produccion, el estado debe ser `REVIEW`.
-   - Seleccionar la tarea y pulsar `APROBACION HUMANA (AI-GRC)`.
-   - Confirmar el cuadro de dialogo. El sistema actualizara el estado a `DONE` y firmara una entrada inmutable en `audit_logs` con rol `director_tecnico_consola_windows`.
+4. **Aprobación local de tarea (no equivale a autorización FIDO ni a merge):**
+   - Para usar `APROBACION HUMANA (AI-GRC)`, el estado debe ser `REVIEW`.
+   - Seleccionar la tarea y confirmar el cuadro de diálogo.
+   - En la base revisada, la consola actualiza el estado local a `DONE` e inserta registros en `task_events` y `audit_logs` con el actor `director_tecnico_consola_windows`. Esto no acredita una firma criptográfica ni que GitHub haya confirmado un merge; véase la sección 6.
 
 ---
 
