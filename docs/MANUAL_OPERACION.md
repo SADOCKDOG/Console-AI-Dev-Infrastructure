@@ -163,4 +163,3 @@ Detalle completo: [OWNER_AUTHORIZATION.md](OWNER_AUTHORIZATION.md).
 - **Implementacion local:** cliente y firmante FIDO, contrato contra la factoria.
 - **Validacion operativa / DOI operativo / activacion:** no ejecutada ni activada en esta fase.
 - **Aprobacion del propietario:** no registrada como autorizacion operativa.
-
