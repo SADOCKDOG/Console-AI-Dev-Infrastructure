@@ -5,6 +5,9 @@ import sys
 import tempfile
 import sqlite3
 from pathlib import Path
+from unittest.mock import patch
+import json
+import gc
 
 # Asegurar importacion
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -60,6 +63,26 @@ def test_desktop_console_headless_lifecycle():
 
     from console.app import DesktopConsoleApp
 
+    with tempfile.TemporaryDirectory() as tmpdir:
+        test_db = Path(tmpdir) / "factory.db"
+        init_local_db(test_db)
+        with sqlite3.connect(test_db) as conn:
+            conn.execute("INSERT INTO tasks(id,title,status) VALUES (?,?,?)", ("TASK-LM-PORCINE-01", "Piloto sintético", "REVIEW"))
+            for name, payload in [
+                ("PULL_REQUEST_PUBLISHED", {"pr_number": 199, "pr_url": "https://github.com/example/pilot/pull/199"}),
+                ("VISUAL_TESTS_VERIFIED", {"status": "PASS"}),
+            ]:
+                conn.execute("INSERT INTO task_events(task_id,event_type,payload) VALUES (?,?,?)",
+                             ("TASK-LM-PORCINE-01", name, json.dumps(payload)))
+        conn.close()
+        with patch("console.app.DB_PATH", test_db), patch("console.app.REPORTS_DIR", Path(tmpdir)):
+            with patch.object(DesktopConsoleApp, "refresh_all_data"):
+                _exercise_gui(DesktopConsoleApp, Path(tmpdir))
+        # Libera los ciclos internos de sqlite3 del recorrido de lectura antes de borrar la DB en Windows.
+        gc.collect()
+
+
+def _exercise_gui(DesktopConsoleApp, reports_dir):
     app = DesktopConsoleApp()
     app.withdraw()  # Ocultar ventana para ejecucion en pruebas
     try:
@@ -69,7 +92,6 @@ def test_desktop_console_headless_lifecycle():
         app.export_audit_report(show_dialog=False)
 
         # Verificar que el informe markdown fue generado en reports/
-        reports_dir = ROOT_DIR / "reports"
         generated_reports = list(reports_dir.glob("informe_auditoria_aigrc_*.md"))
         assert len(generated_reports) > 0
 
