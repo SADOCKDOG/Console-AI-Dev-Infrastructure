@@ -68,10 +68,11 @@ Permite supervisar el ciclo de vida de los requerimientos y emitir aprobaciones 
    - Pulsar `CREAR TAREA EN BACKLOG`. La tarea quedara registrada con identificador unico y trazabilidad auditada.
 3. **Inspeccion de Expedientes Tecnicos:**
    - Al seleccionar cualquier tarea en la tabla izquierda, el panel derecho desplegara el expediente completo: metadatos, rama Git, worktree aislado, criterios normativos de aceptacion y el historial de transiciones de agentes.
-4. **Aprobación local de tarea (no equivale a autorización FIDO ni a merge):**
-   - Para usar `APROBACION HUMANA (AI-GRC)`, el estado debe ser `REVIEW`.
-   - Seleccionar la tarea y confirmar el cuadro de diálogo.
-   - En la base revisada, la consola actualiza el estado local a `DONE` e inserta registros en `task_events` y `audit_logs` con el actor `director_tecnico_consola_windows`. Esto no acredita una firma criptográfica ni que GitHub haya confirmado un merge; véase la sección 6.
+4. **Autorización por el propietario**
+   - Seleccione una tarea en `REVIEW` con una PR registrada y pulse **AUTORIZAR PR**. Revise su repositorio, archivos, diff, revisión y alcance.
+   - Confirme el sufijo del HEAD y firme con la clave FIDO configurada. Consulte **HISTORIAL** para verificar la autorización y **REVOCAR** para revocarla mediante firma.
+   - La integración sigue pendiente. La consola mantiene el estado de la tarea y el árbol de trabajo.
+
 
 ---
 
@@ -121,7 +122,7 @@ Permite consultar la pista forense completa y exportar informes ejecutivos.
 
 ---
 
-## 6. Autorización de propietario: diseño y comportamiento de la base revisada
+## 6. Antecedente histórico de la aprobación local
 
 Esta sección describe el código de Console en la base `c67d62ab12103752071f9fbfa2b317ae3d470062`; no es una garantía de seguridad ni un procedimiento que afirme Owner-Only Authorization operativo.
 
@@ -150,7 +151,7 @@ Estas referencias describen el diseño; no acreditan un DOI operativo ni rutas A
 
 ---
 
-## 9. Estado y límites de la documentación
+## 9. Límites de la entrega histórica D2-B
 
 - Esta PR cambia solo documentación. No añade cliente API, firmante FIDO, broker ni cambios del comportamiento descrito en §6.
 - Los archivos locales `console/owner_auth_client.py` y `console/owner_signer.py` no están incluidos en la PR ni en la base revisada; su presencia en un checkout local no acredita capacidades entregadas.

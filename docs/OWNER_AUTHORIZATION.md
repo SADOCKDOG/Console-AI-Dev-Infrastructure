@@ -1,6 +1,14 @@
 # Autorización de propietario: diseño previsto y comportamiento de Console
 
-**Entrega:** D2-B, documentación únicamente.
+## Cliente de autorización de Console
+
+En esta revisión, **AUTORIZAR PR** prepara una autorización para la tarea en `REVIEW` y la PR registrada. La consola comprueba la identidad de la PR, los SHA, los archivos y el digest del contenido canónico. El broker solicita confirmación del HEAD y usa el identificador local de la clave de seguridad indicado por `OWNER_AUTH_FIDO_KEY_HANDLE`. **HISTORIAL** y **REVOCAR** consultan la API de Factory. El cliente usa el endpoint loopback `endpoints.backend_fastapi` de la configuración.
+
+La integración queda pendiente incluso con una autorización activa. La función de promoción devuelve `False` tanto desde la interfaz como con `skip_confirm=True`. La comprobación de esta rama usa una API y base de datos sintéticas. Siguen pendientes el hardware FIDO, la custodia efectiva y el ensayo con Factory en staging.
+
+## Antecedente documental
+
+**Entrega histórica:** D2-B, documentación únicamente.
 **Base revisada:** `c67d62ab12103752071f9fbfa2b317ae3d470062` (`main`).
 **Alcance:** este documento diferencia el diseño de Factory del comportamiento que el código de Console en esa base implementa. No habilita ni certifica capacidades.
 

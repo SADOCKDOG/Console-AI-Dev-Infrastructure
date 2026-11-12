@@ -4,6 +4,8 @@ Autonomous AI Dev Infrastructure · Sdog Farm Software Factory (sadogfarm.onmicr
 
 import datetime
 import json
+import hashlib
+import secrets
 import os
 from pathlib import Path
 import re
@@ -24,6 +26,15 @@ from tkinter import filedialog, messagebox, ttk
 
 from console.config import REPORTS_DIR, ROOT_DIR, load_settings, resolve_db_path
 from console.models import LOCAL_SCHEMA_SQL, init_local_db
+
+from console.owner_auth_client import OwnerAuthorizationClient, OwnerAuthorizationClientError, safe_review_text
+from console.owner_signer import (
+    AUTH_NAMESPACE,
+    REVOKE_NAMESPACE,
+    OwnerSignerError,
+    canonical_json,
+    sign_owner_payload,
+)
 
 # Base de datos resuelta
 DB_PATH = resolve_db_path()
@@ -543,7 +554,7 @@ class DesktopConsoleApp(tk.Tk):
 
         btn_approve_task = tk.Button(
             top_bar,
-            text="APROBACION HUMANA (AI-GRC)",
+            text="AUTORIZAR PR",
             bg="#059669",
             fg="#FFFFFF",
             font=("Segoe UI", 9, "bold"),
@@ -554,9 +565,23 @@ class DesktopConsoleApp(tk.Tk):
         )
         btn_approve_task.pack(side="right", padx=4)
 
+        btn_owner_auth_status = tk.Button(
+            top_bar, text="HISTORIAL", bg="#374151", fg="#F9FAFB",
+            font=("Segoe UI", 9, "bold"), relief="flat", padx=10, pady=3,
+            command=self.show_owner_authorization_status,
+        )
+        btn_owner_auth_status.pack(side="right", padx=4)
+
+        btn_owner_auth_revoke = tk.Button(
+            top_bar, text="REVOCAR", bg="#991B1B", fg="#FFFFFF",
+            font=("Segoe UI", 9, "bold"), relief="flat", padx=10, pady=3,
+            command=self.revoke_owner_authorization,
+        )
+        btn_owner_auth_revoke.pack(side="right", padx=4)
+
         btn_promote_prod = tk.Button(
             top_bar,
-            text="PROMOVER A PRODUCCION (MERGE PR)",
+            text="INTEGRACIÓN PENDIENTE",
             bg="#D97706",
             fg="#FFFFFF",
             font=("Segoe UI", 9, "bold"),
@@ -661,7 +686,7 @@ class DesktopConsoleApp(tk.Tk):
 
         btn_sub_promote = tk.Button(
             detail_actions,
-            text="VALIDAR Y PROMOVER A PRODUCCION",
+            text="INTEGRACIÓN PENDIENTE",
             bg="#D97706",
             fg="#FFFFFF",
             font=("Segoe UI", 8, "bold"),
@@ -1750,8 +1775,137 @@ class DesktopConsoleApp(tk.Tk):
         btn_save = tk.Button(dialog, text="CREAR TAREA EN BACKLOG", bg="#2563EB", fg="#FFFFFF", font=("Segoe UI", 10, "bold"), relief="flat", command=save, pady=6)
         btn_save.pack(fill="x", padx=16, pady=12)
 
+    def _owner_auth_client(self):
+        return OwnerAuthorizationClient(self.settings["endpoints"]["backend_fastapi"])
+
+    def _confirm_owner_signed_payload(self, title: str, canonical_payload_text: str, head_sha: str) -> str | None:
+        """Render signed bytes exactly and require a typed SHA challenge."""
+        payload_digest = hashlib.sha256(canonical_payload_text.encode("utf-8")).hexdigest()
+        try:
+            payload_view = json.dumps(json.loads(canonical_payload_text), sort_keys=True, indent=2, ensure_ascii=True)
+        except json.JSONDecodeError:
+            payload_view = canonical_payload_text.encode("unicode_escape").decode("ascii")
+        payload_view = safe_review_text(payload_view)
+        dialog = tk.Toplevel(self)
+        dialog.title(title)
+        dialog.geometry("920x680")
+        dialog.transient(self)
+        dialog.grab_set()
+        result = {"suffix": None}
+        tk.Label(
+            dialog,
+            text=f"Revisa el payload exacto. Escribe los últimos 12 caracteres del HEAD: {head_sha[-12:]}",
+            anchor="w",
+            justify="left",
+            wraplength=880,
+        ).pack(fill="x", padx=14, pady=(14, 8))
+        frame = tk.Frame(dialog)
+        frame.pack(fill="both", expand=True, padx=14, pady=6)
+        text = tk.Text(frame, wrap="word", height=24, state="normal")
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=text.yview)
+        text.configure(yscrollcommand=scrollbar.set)
+        text.insert("1.0", f"SHA-256 del contenido firmado: {payload_digest}\n\n{payload_view}")
+        text.configure(state="disabled")
+        text.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        entry = ttk.Entry(dialog, width=24)
+        entry.pack(anchor="w", padx=14, pady=8)
+        buttons = tk.Frame(dialog)
+        buttons.pack(fill="x", padx=14, pady=(4, 14))
+        confirm = tk.Button(buttons, text="CONFIRMAR Y FIRMAR", state="disabled")
+        confirm.pack(side="right", padx=(6, 0))
+        tk.Button(buttons, text="CANCELAR", command=dialog.destroy).pack(side="right")
+
+        def update_confirmation(_event=None):
+            confirm.configure(state="normal" if entry.get().strip() == head_sha[-12:] else "disabled")
+
+        def accept():
+            result["suffix"] = entry.get().strip()
+            dialog.destroy()
+
+        entry.bind("<KeyRelease>", update_confirmation)
+        confirm.configure(command=accept)
+        entry.focus_set()
+        self.wait_window(dialog)
+        return result["suffix"]
+
+    def _review_owner_pr_snapshot(self, task_id: str, context: dict) -> bool:
+        dialog = tk.Toplevel(self)
+        dialog.title("Revisión de PR y alcance de autorización")
+        dialog.geometry("1040x760")
+        dialog.transient(self)
+        dialog.grab_set()
+        result = {"authorized": False}
+        file_details = context.get("file_details") or []
+        parts = [
+            f"Tarea: {task_id}",
+            f"Repositorio: {context.get('repository')}",
+            f"PR #{context.get('pr_number')}: https://github.com/{context.get('repository')}/pull/{context.get('pr_number')}",
+            f"HEAD: {context.get('head_sha')}",
+            f"Base: {context.get('base_ref')} @ {context.get('base_sha')}",
+            f"SHA-256 del manifiesto: {context.get('diff_sha256')}",
+            f"Integrable: {context.get('mergeable')} · Estado: {context.get('state')} · Borrador: {context.get('draft')}",
+            f"Protección de rama válida: {context.get('branch_protection_valid')} · Excepción presente: {context.get('has_bypass')}",
+            f"Checks: {json.dumps(context.get('check_results', {}), sort_keys=True)}",
+            "",
+            "Archivos y cambios devueltos por GitHub:",
+        ]
+        remaining = 240_000
+        needs_external_review = set(context.get("files", [])) != {item.get("filename") for item in file_details}
+        for item in file_details:
+            parts.append(f"\n--- {item.get('status')} {json.dumps(item.get('filename'), ensure_ascii=True)} (+{item.get('additions')}/-{item.get('deletions')}) ---\n")
+            patch_text = item.get("patch")
+            if not patch_text:
+                parts.append("[GitHub omitió el diff de este archivo. Revíselo en la PR antes de autorizar.]\n")
+                needs_external_review = True
+                continue
+            chunk = safe_review_text(str(patch_text))
+            if len(chunk) > remaining:
+                parts.append(chunk[:max(0, remaining)])
+                parts.append("\n[Vista previa truncada. Revise la PR completa antes de autorizar.]\n")
+                needs_external_review = True
+                break
+            parts.append(chunk)
+            remaining -= len(chunk)
+        parts.append("\nAlcance: integrar exclusivamente esta revisión de la PR. El ejecutor está pendiente.")
+        text = tk.Text(dialog, wrap="none", height=31, width=130)
+        y_scroll = ttk.Scrollbar(dialog, orient="vertical", command=text.yview)
+        x_scroll = ttk.Scrollbar(dialog, orient="horizontal", command=text.xview)
+        text.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
+        text.insert("1.0", safe_review_text("\n".join(parts)))
+        text.configure(state="disabled")
+        text.pack(fill="both", expand=True, padx=12, pady=(12, 0))
+        y_scroll.pack(side="right", fill="y")
+        x_scroll.pack(fill="x", padx=12)
+        buttons = tk.Frame(dialog)
+        buttons.pack(fill="x", padx=12, pady=12)
+        tk.Button(buttons, text="ABRIR PR COMPLETA", command=lambda: webbrowser.open(f"https://github.com/{context.get('repository')}/pull/{context.get('pr_number')}")).pack(side="left")
+        external_reviewed = tk.BooleanVar(value=False)
+        if needs_external_review:
+            tk.Checkbutton(
+                dialog,
+                text="He abierto la PR y revisado los fragmentos omitidos o truncados.",
+                variable=external_reviewed,
+            ).pack(anchor="w", padx=12)
+
+        def choose():
+            if needs_external_review and not external_reviewed.get():
+                return
+            result["authorized"] = True
+            dialog.destroy()
+
+        tk.Button(buttons, text="CANCELAR", command=dialog.destroy).pack(side="right")
+        owner_button = tk.Button(buttons, text="AUTORIZAR SOLO PROPIETARIO", command=choose, state="disabled" if needs_external_review else "normal")
+        owner_button.pack(side="right", padx=6)
+        if needs_external_review:
+            def enable_after_review(*_args):
+                owner_button.configure(state="normal" if external_reviewed.get() else "disabled")
+            external_reviewed.trace_add("write", enable_after_review)
+        self.wait_window(dialog)
+        return result["authorized"]
+
     def approve_selected_task(self):
-        """Emite la aprobacion humana formal para una tarea en estado REVIEW."""
+        """Create an explicit FIDO-backed authorization for one current PR/SHA."""
         if not self.selected_task_id:
             messagebox.showwarning("Seleccion Requerida", "Seleccione primero una tarea de la lista.")
             return
@@ -1767,32 +1921,141 @@ class DesktopConsoleApp(tk.Tk):
                 current_status = row[0]
 
             if current_status != "REVIEW":
-                messagebox.showinfo("Estado no apto", f"La tarea {task_id} se encuentra en [{current_status}].\nSolo las tareas en [REVIEW] requieren la barrera de aprobacion humana.")
+                messagebox.showinfo("Estado no apto", f"La tarea {task_id} está en [{current_status}]. Solo REVIEW puede iniciar una autorización de PR.")
                 return
 
-            if messagebox.askyesno("Confirmar Aprobacion Humana (AI-GRC)", f"Desea aprobar y promover la tarea {task_id} a [DONE]?\n\nEsta accion certifica que el codigo y los diffs han sido auditados y autoriza su paso definitivo a produccion."):
-                with sqlite3.connect(DB_PATH) as conn:
-                    conn.execute("UPDATE tasks SET status = 'DONE', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (task_id,))
-                    conn.execute(
-                        """
-                        INSERT INTO task_events (task_id, event_type, from_status, to_status, agent_role, payload)
-                        VALUES (?, 'TASK_APPROVED', 'REVIEW', 'DONE', 'director_tecnico_consola_windows', ?)
-                        """,
-                        (task_id, json.dumps({"decision": "APPROVED", "comments": "Aprobado mediante Consola Desktop Windows."})),
-                    )
-                    conn.execute(
-                        """
-                        INSERT INTO audit_logs (task_id, action, actor, details)
-                        VALUES (?, 'HUMAN_APPROVAL_RECORDED', 'director_tecnico_consola_windows', ?)
-                        """,
-                        (task_id, json.dumps({"decision": "APPROVED", "comments": "Aprobado mediante Consola Desktop Windows."})),
-                    )
-                self.log_service_message(f"Aprobacion registrada: APPROVED para tarea {task_id}")
-                self.load_tasks()
-                self.show_task_details(task_id)
-                messagebox.showinfo("Aprobada", f"La tarea {task_id} ha transicionado a DONE con exito.")
+            pr_info = self._get_task_pr_info(task_id, recorded_only=True)
+            repository = pr_info.get("repo")
+            pr_number = pr_info.get("pr_number")
+            if not repository or not pr_number:
+                messagebox.showerror("PR requerida", "No existe una PR vinculada. No se crea ni publica una automáticamente.")
+                return
+
+            client = self._owner_auth_client()
+            context = client.review_context(repository, int(pr_number))
+            if context.get("repository", "").lower() != repository.lower() or context.get("pr_number") != pr_number:
+                raise OwnerAuthorizationClientError("El contexto recibido corresponde a otra PR.")
+            files = context.get("files") or []
+            if not files:
+                messagebox.showerror("Diff vacío", "No se recibió un manifiesto de archivos verificable.")
+                return
+            if not self._review_owner_pr_snapshot(task_id, context):
+                return
+            prepared = client.prepare({
+                "repository": repository,
+                "pr_number": int(pr_number),
+                "allowed_files": files,
+                "allow_agent_execution": False,
+                "task_id": task_id,
+            })
+            payload = prepared.get("payload")
+            fields = ("repository", "pr_number", "head_sha", "base_ref", "base_sha", "diff_sha256")
+            if not isinstance(payload, dict) or any(payload.get(field) != context.get(field) for field in fields):
+                messagebox.showerror("Snapshot cambiado", "PR/SHA/diff cambió entre presentación y firma; no se firmó.")
+                return
+            if (payload.get("task_id") != task_id or payload.get("decision") != "AUTHORIZE_MERGE"
+                    or payload.get("scope") != {"operation": "MERGE", "allowed_files": sorted(set(files)), "allow_agent_execution": False}):
+                raise OwnerSignerError("El alcance preparado difiere de la tarea o de los archivos revisados.")
+            payload_bytes = canonical_json(payload)
+            if payload_bytes.decode("utf-8") != prepared.get("canonical_payload") or hashlib.sha256(payload_bytes).hexdigest() != prepared.get("payload_sha256"):
+                raise OwnerSignerError("El payload no coincide con los bytes/digest mostrados")
+            confirmed_suffix = self._confirm_owner_signed_payload(
+                "Confirmación exacta de autorización",
+                prepared["canonical_payload"],
+                payload["head_sha"],
+            )
+            if confirmed_suffix != payload["head_sha"][-12:]:
+                return
+            key_handle = os.getenv("OWNER_AUTH_FIDO_KEY_HANDLE", "").strip()
+            if not key_handle:
+                raise OwnerSignerError("No hay key handle FIDO configurado; no se creó autorización.")
+            signature = sign_owner_payload(
+                payload,
+                key_handle_path=Path(key_handle),
+                expected_key_id=payload["key_id"],
+                namespace=AUTH_NAMESPACE,
+            )
+            record = client.authorize({"payload": payload, "signature_format": "openssh-sk", "signature": signature})
+            if record.get("authorization_id") != payload["authorization_id"] or record.get("state") != "ACTIVE":
+                raise OwnerAuthorizationClientError("Factory devolvió un registro inesperado. Consulte HISTORIAL.")
+            messagebox.showinfo("Autorización firmada", f"ID: {record.get('authorization_id')}\nEstado: {record.get('state')}\nLa integración está pendiente. La tarea permanece en revisión.")
+        except (OwnerAuthorizationClientError, OwnerSignerError, OSError, KeyError, ValueError, TypeError) as exc:
+            messagebox.showerror("Autorización sin confirmar", str(exc))
         except Exception as exc:
-            messagebox.showerror("Error de Aprobacion", f"No se pudo completar la aprobacion:\n{exc}")
+            messagebox.showerror("Error de autorización", f"Consulte HISTORIAL antes de reintentar. Detalle: {exc}")
+
+    def show_owner_authorization_status(self):
+        if not self.selected_task_id:
+            messagebox.showwarning("Selección requerida", "Seleccione una tarea vinculada a una PR.")
+            return
+        try:
+            pr_info = self._get_task_pr_info(self.selected_task_id, recorded_only=True)
+            if not pr_info.get("repo") or not pr_info.get("pr_number"):
+                messagebox.showinfo("Sin PR", "No hay una PR exacta registrada.")
+                return
+            history = self._owner_auth_client().history_for_pr(pr_info["repo"], int(pr_info["pr_number"]))
+            if not history:
+                messagebox.showinfo("Estado de la autorización", "No hay autorizaciones registradas para esta PR.")
+                return
+            lines = [f"Repo: {pr_info['repo']} · PR #{pr_info['pr_number']}"]
+            for status in history[:10]:
+                lines.extend([
+                    f"\nID: {status.get('authorization_id')} · Estado: {status.get('state')}",
+                    f"HEAD: {status.get('head_sha')} · Base: {status.get('base_ref')} @ {status.get('base_sha')}",
+                    f"Firma: {status.get('signer_identity')} · Expira: {status.get('expires_at')}",
+                    f"Merge SHA: {status.get('merge_sha')} · Eventos: {status.get('events')}",
+                ])
+            messagebox.showinfo("Historial de autorizaciones", "\n".join(lines))
+        except (OwnerAuthorizationClientError, OwnerSignerError, OSError, KeyError, ValueError, TypeError) as exc:
+            messagebox.showerror("Estado no disponible", str(exc))
+
+    def revoke_owner_authorization(self):
+        if not self.selected_task_id:
+            messagebox.showwarning("Selección requerida", "Seleccione una tarea vinculada a una PR.")
+            return
+        try:
+            pr_info = self._get_task_pr_info(self.selected_task_id, recorded_only=True)
+            if not pr_info.get("repo") or not pr_info.get("pr_number"):
+                messagebox.showinfo("Sin PR", "No hay una PR exacta registrada.")
+                return
+            client = self._owner_auth_client()
+            auth = client.active_for_pr(pr_info["repo"], int(pr_info["pr_number"]))
+            if auth["repository"].lower() != pr_info["repo"].lower() or auth["pr_number"] != int(pr_info["pr_number"]):
+                raise OwnerAuthorizationClientError("La autorización recibida corresponde a otra PR.")
+            prompt = f"Revocar autorización activa\nRepo: {auth['repository']} · PR #{auth['pr_number']}\nHEAD: {auth['head_sha']}\nID: {auth['authorization_id']}"
+            if not messagebox.askyesno("Confirmar revocación firmada", prompt):
+                return
+            key_handle = os.getenv("OWNER_AUTH_FIDO_KEY_HANDLE", "").strip()
+            if not key_handle:
+                raise OwnerSignerError("No hay key handle FIDO configurado")
+            payload = {
+                "schema_version": 1,
+                "revocation_id": str(uuid.uuid4()),
+                "authorization_id": auth["authorization_id"],
+                "signer_identity": auth["signer_identity"],
+                "github_login": auth["github_login"],
+                "key_id": auth["key_id"],
+                "repository": auth["repository"],
+                "pr_number": int(auth["pr_number"]),
+                "head_sha": auth["head_sha"],
+                "decision": "REVOKE",
+                "issued_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+                "nonce": secrets.token_urlsafe(32),
+            }
+            suffix = self._confirm_owner_signed_payload(
+                "Confirmación exacta de revocación",
+                canonical_json(payload).decode("utf-8"),
+                payload["head_sha"],
+            )
+            if suffix != payload["head_sha"][-12:]:
+                return
+            signature = sign_owner_payload(payload, key_handle_path=Path(key_handle), expected_key_id=payload["key_id"], namespace=REVOKE_NAMESPACE)
+            revoked = client.revoke(auth["authorization_id"], {"payload": payload, "signature_format": "openssh-sk", "signature": signature})
+            if revoked.get("authorization_id") != auth["authorization_id"] or revoked.get("state") != "REVOKED":
+                raise OwnerAuthorizationClientError("Factory devolvió un estado inesperado. Consulte HISTORIAL.")
+            messagebox.showinfo("Autorización revocada", f"Estado: {revoked.get('state')}\nID: {revoked.get('authorization_id')}")
+        except (OwnerAuthorizationClientError, OwnerSignerError, OSError, KeyError, ValueError, TypeError) as exc:
+            messagebox.showerror("Revocación sin confirmar", str(exc))
 
     def _resolve_task_repo_and_github(self, task_id: str) -> dict:
         """Determina el repositorio local, la ruta física, el repositorio en GitHub y la rama base."""
@@ -1862,7 +2125,7 @@ class DesktopConsoleApp(tk.Tk):
 
         return res
 
-    def _get_task_pr_info(self, task_id: str) -> dict:
+    def _get_task_pr_info(self, task_id: str, *, recorded_only: bool = False) -> dict:
         """Obtiene la informacion de la Pull Request vinculada a la tarea."""
         info = {"pr_number": None, "pr_url": None, "branch": None, "repo": None, "state": None}
         if not DB_PATH.exists():
@@ -1891,6 +2154,20 @@ class DesktopConsoleApp(tk.Tk):
                         pass
         except Exception:
             pass
+
+        if recorded_only:
+            # La autorización exige una identidad persistida. La búsqueda por rama es solo de navegación.
+            url = info["pr_url"]
+            repo, number = info["repo"], info["pr_number"]
+            if url:
+                match = re.fullmatch(r"https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/pull/([1-9][0-9]*)/?", str(url))
+                if (not match or (repo is not None and str(repo).lower() != match[1].lower())
+                        or (number is not None and str(number) != match[2])):
+                    return {**info, "repo": None, "pr_number": None}
+                repo, number = match[1], int(match[2])
+            if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", str(repo or "")) or not re.fullmatch(r"[1-9][0-9]*", str(number)):
+                return {**info, "repo": None, "pr_number": None}
+            return {**info, "repo": repo, "pr_number": int(number)}
 
         # Si aún no tiene URL pero tenemos repo y rama, consultar GitHub CLI dinámicamente
         if not info["pr_url"]:
@@ -1933,247 +2210,16 @@ class DesktopConsoleApp(tk.Tk):
             )
 
     def promote_selected_task_to_production(self, skip_confirm: bool = False):
-        """Valida las garantias de calidad, publica la rama, crea la PR (si no existe), fusiona a produccion y limpia worktrees."""
-        if not self.selected_task_id:
-            messagebox.showwarning("Seleccion Requerida", "Seleccione primero una tarea de la lista.")
+        """Merge execution is unavailable: this console only authorizes and revokes."""
+        if skip_confirm:
+            messagebox.showerror("Promoción bloqueada", "La ejecución automática de integraciones está deshabilitada.")
             return False
-
-        task_id = self.selected_task_id
-        try:
-            repo_info = self._resolve_task_repo_and_github(task_id)
-            tid = task_id
-            title = repo_info["title"]
-            status = repo_info["status"]
-            branch = repo_info["branch_name"]
-            repo_dir = repo_info["repo_dir"]
-            github_repo = repo_info["github_repo"]
-            base_branch = repo_info["base_branch"]
-            worktree_path = repo_info["worktree_path"]
-
-            # 1. Validar estado apto
-            if status not in ("REVIEW", "DONE"):
-                messagebox.showwarning(
-                    "Estado No Apto",
-                    f"La tarea {tid} se encuentra en [{status}].\n"
-                    "Solo las tareas en [REVIEW] o [DONE] pueden ser promovidas formalmente a produccion."
-                )
-                return False
-
-            # Si está en REVIEW, asegurar aprobación humana
-            if status == "REVIEW":
-                if not messagebox.askyesno(
-                    "Aprobacion Humana Requerida (AI-GRC)",
-                    f"La tarea {tid} se encuentra en estado [REVIEW].\n\n"
-                    "Desea certificar su aprobacion formal y promoverla a produccion?"
-                ):
-                    return False
-                # Registrar aprobación
-                with sqlite3.connect(DB_PATH) as conn:
-                    conn.execute("UPDATE tasks SET status = 'DONE', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (tid,))
-                    conn.execute(
-                        """
-                        INSERT INTO task_events (task_id, event_type, from_status, to_status, agent_role, payload)
-                        VALUES (?, 'TASK_APPROVED', 'REVIEW', 'DONE', 'director_tecnico_consola_windows', ?)
-                        """,
-                        (tid, json.dumps({"decision": "APPROVED", "comments": "Aprobado mediante boton de promocion en Consola Desktop."})),
-                    )
-                    conn.execute(
-                        """
-                        INSERT INTO audit_logs (task_id, action, actor, details)
-                        VALUES (?, 'HUMAN_APPROVAL_RECORDED', 'director_tecnico_consola_windows', ?)
-                        """,
-                        (tid, json.dumps({"decision": "APPROVED", "comments": "Aprobado mediante boton de promocion en Consola Desktop."})),
-                    )
-
-            if not branch:
-                messagebox.showerror("Error", f"La tarea {tid} no tiene ninguna rama git asignada.")
-                return False
-
-            self.log_service_message(f"Verificando Pull Request para {tid} (rama: {branch}) en {github_repo}...")
-
-            # 2. Obtener o crear la Pull Request
-            pr_info = self._get_task_pr_info(tid)
-            pr_num = pr_info.get("pr_number")
-            pr_url = pr_info.get("pr_url")
-            pr_state = pr_info.get("state")
-
-            if pr_state == "MERGED":
-                messagebox.showinfo(
-                    "Ya Fusionada",
-                    f"La Pull Request #{pr_num} ({pr_url}) ya se encuentra fusionada (MERGED) en la rama {base_branch} de {github_repo}."
-                )
-                return True
-
-            if not pr_num:
-                # La PR aún no existe en GitHub. Publicar rama y crear PR
-                confirm_pr = (
-                    f"CREACION DE PULL REQUEST Y PROMOCION A PRODUCCION\n\n"
-                    f"Expediente Tecnico: {tid}\n"
-                    f"Titulo: {title}\n"
-                    f"Repositorio: {github_repo}\n"
-                    f"Rama Feature: {branch}\n"
-                    f"Rama Base Destino: {base_branch}\n\n"
-                    f"Desea publicar la rama en GitHub, abrir la Pull Request formal y proceder a su fusion a produccion?"
-                )
-                if not skip_confirm and not messagebox.askyesno("Confirmar Promocion a Produccion", confirm_pr):
-                    return False
-
-                self.log_service_message(f"Publicando rama {branch} en {github_repo}...")
-                push_cmd = ["git", "-C", str(repo_dir), "push", "origin", branch]
-                push_res = subprocess.run(push_cmd, capture_output=True, text=True, timeout=60)
-                if push_res.returncode != 0:
-                    err = push_res.stderr.strip() or push_res.stdout.strip()
-                    self.log_service_message(f"Error al empujar rama a origin: {err}")
-                    messagebox.showerror("Error de Publicacion Git", f"No se pudo empujar la rama {branch} a origin:\n{err}")
-                    return False
-
-                self.log_service_message(f"Creando Pull Request hacia {base_branch} en {github_repo}...")
-                pr_create_cmd = [
-                    "gh", "pr", "create",
-                    "--repo", github_repo,
-                    "--base", base_branch,
-                    "--head", branch,
-                    "--title", f"feat({tid.lower()}): {title}",
-                    "--body", "Promocion automatica a produccion validada mediante Consola Desktop Windows (AI-GRC)."
-                ]
-                pr_create_res = subprocess.run(pr_create_cmd, capture_output=True, text=True, timeout=30)
-                if pr_create_res.returncode != 0:
-                    err = pr_create_res.stderr.strip() or pr_create_res.stdout.strip()
-                    self.log_service_message(f"Error al crear Pull Request: {err}")
-                    messagebox.showerror("Error al Crear PR", f"No se pudo crear la Pull Request en GitHub:\n{err}")
-                    return False
-
-                # Recuperar número y URL de la PR recién creada
-                pr_info = self._get_task_pr_info(tid)
-                pr_num = pr_info.get("pr_number")
-                pr_url = pr_info.get("pr_url")
-
-                with sqlite3.connect(DB_PATH) as conn:
-                    conn.execute(
-                        """
-                        INSERT INTO task_events (task_id, event_type, from_status, to_status, agent_role, payload)
-                        VALUES (?, 'PULL_REQUEST_PUBLISHED', 'DONE', 'DONE', 'director_tecnico_consola_windows', ?)
-                        """,
-                        (tid, json.dumps({
-                            "pr_number": pr_num,
-                            "pr_url": pr_url,
-                            "repo": github_repo,
-                            "branch": branch
-                        })),
-                    )
-
-            # 3. Confirmación final de Merge
-            confirm_merge = (
-                f"VALIDACION Y FUSION DEFINITIVA A PRODUCCION (AI-GRC)\n\n"
-                f"Expediente Tecnico: {tid}\n"
-                f"Titulo: {title}\n"
-                f"Repositorio: {github_repo}\n"
-                f"Pull Request: #{pr_num} ({pr_url})\n"
-                f"Rama Destino: {base_branch} (Produccion)\n\n"
-                f"Desea ejecutar la fusion formal en produccion y sincronizar el repositorio local?"
-            )
-            if not skip_confirm and not messagebox.askyesno("Ejecutar Fusión a Producción", confirm_merge):
-                return False
-
-            self.log_service_message(f"Fusionando PR #{pr_num} en {github_repo}...")
-
-            # 4. Ejecutar Merge mediante GitHub CLI
-            merge_cmd = [
-                "gh", "pr", "merge", str(pr_num),
-                "--repo", github_repo,
-                "--squash", "--admin",
-                "--body", "Promocion a produccion validada mediante Consola Desktop Windows AI-GRC."
-            ]
-            res = subprocess.run(merge_cmd, capture_output=True, text=True, timeout=60)
-            if res.returncode != 0:
-                # Reintentar sin --admin si no aplica branch protection con admin
-                merge_cmd_alt = [
-                    "gh", "pr", "merge", str(pr_num),
-                    "--repo", github_repo,
-                    "--squash",
-                    "--body", "Promocion a produccion validada mediante Consola Desktop Windows AI-GRC."
-                ]
-                res = subprocess.run(merge_cmd_alt, capture_output=True, text=True, timeout=60)
-
-            if res.returncode != 0:
-                # Reintentar con --merge convencional
-                merge_cmd_merge = [
-                    "gh", "pr", "merge", str(pr_num),
-                    "--repo", github_repo,
-                    "--merge",
-                    "--body", "Promocion a produccion validada mediante Consola Desktop Windows AI-GRC."
-                ]
-                res = subprocess.run(merge_cmd_merge, capture_output=True, text=True, timeout=60)
-
-            if res.returncode == 0:
-                self.log_service_message(f"PR #{pr_num} fusionada con exito. Sincronizando {base_branch} local...")
-
-                # 5. Sincronizar repositorio local y podar worktrees
-                try:
-                    subprocess.run(["git", "-C", str(repo_dir), "checkout", base_branch], capture_output=True, timeout=15)
-                    subprocess.run(["git", "-C", str(repo_dir), "fetch", "origin", base_branch], capture_output=True, timeout=20)
-                    subprocess.run(["git", "-C", str(repo_dir), "reset", "--hard", f"origin/{base_branch}"], capture_output=True, timeout=15)
-                    if worktree_path:
-                        subprocess.run(["git", "-C", str(repo_dir), "worktree", "remove", "--force", str(worktree_path)], capture_output=True, timeout=15)
-                    subprocess.run(["git", "-C", str(repo_dir), "worktree", "prune"], capture_output=True, timeout=10)
-                    subprocess.run(["git", "-C", str(repo_dir), "branch", "-D", branch], capture_output=True, timeout=10)
-                except Exception as sync_exc:
-                    self.log_service_message(f"Aviso en sincronizacion local post-merge: {sync_exc}")
-
-                # 6. Registrar en Base de Datos y Auditoría Inmutable
-                with sqlite3.connect(DB_PATH) as conn:
-                    conn.execute("UPDATE tasks SET status = 'DONE', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (tid,))
-                    conn.execute(
-                        """
-                        INSERT INTO task_events (task_id, event_type, from_status, to_status, agent_role, payload)
-                        VALUES (?, 'PRODUCTION_PROMOTED', 'DONE', 'DONE', 'director_tecnico_consola_windows', ?)
-                        """,
-                        (tid, json.dumps({
-                            "pr_number": pr_num,
-                            "target_branch": base_branch,
-                            "strategy": "squash",
-                            "repo": github_repo
-                        })),
-                    )
-                    conn.execute(
-                        """
-                        INSERT INTO audit_logs (task_id, action, actor, details)
-                        VALUES (?, 'PRODUCTION_MERGE_COMPLETED', 'director_tecnico_consola_windows', ?)
-                        """,
-                        (tid, json.dumps({
-                            "pr_number": pr_num,
-                            "repo": github_repo,
-                            "target_branch": base_branch,
-                            "status": "MERGED",
-                            "url": pr_url
-                        })),
-                    )
-
-                self.log_service_message(f"Promocion completada con exito para {tid} (PR #{pr_num}).")
-                self.load_tasks()
-                self.load_audit_logs()
-                self.show_task_details(tid)
-                if not skip_confirm:
-                    messagebox.showinfo(
-                        "Promocion a Produccion Exitosa",
-                        f"La Pull Request #{pr_num} ha sido fusionada (merged) con exito en la rama {base_branch} de {github_repo}.\n\n"
-                        f"El repositorio local ha sido sincronizado y el expediente {tid} registrado en auditoria inmutable."
-                    )
-                return True
-            else:
-                err_msg = res.stderr.strip() or res.stdout.strip()
-                self.log_service_message(f"Fallo al ejecutar merge de PR #{pr_num}: {err_msg}")
-                if not skip_confirm:
-                    messagebox.showerror(
-                        "Error de Promocion",
-                        f"No se pudo completar el merge de la Pull Request #{pr_num}:\n\n{err_msg}"
-                    )
-                return False
-        except Exception as exc:
-            self.log_service_message(f"Excepcion durante la promocion a produccion: {exc}")
-            if not skip_confirm:
-                messagebox.showerror("Error Inesperado", f"Ocurrio un error al intentar promover a produccion:\n{exc}")
-            return False
+        messagebox.showinfo(
+            "Merge no disponible",
+            "Esta consola solo crea y revoca autorizaciones firmadas por el propietario.\n"
+            "La ejecución del merge no está habilitada en este build; no se modificó nada.",
+        )
+        return False
 
     def run_orchestration_cycle(self):
         """Ejecuta el ciclo asistido multiagente en un hilo de fondo."""

@@ -12,7 +12,7 @@ Repositorio Principal: [https://github.com/SADOCKDOG/Console-AI-Dev-Infrastructu
 Esta aplicacion de escritorio nativa para Windows proporciona a directores tecnicos, operadores de infraestructura y auditores normativos un panel de control desacoplado, reactivo y de alta disponibilidad para:
 - Monitorizar en tiempo real los servicios de la factoria (FCC Server, FastAPI Backend, SQLite WAL, Microsoft Foundry, Sandboxes).
 - Supervisar el tablero Kanban de proyectos satelite como *Livestock Manager*.
-- Ejecutar la barrera de aprobacion humana obligatoria (AI-GRC Gate) para promover tareas a `DONE`.
+- Revisar PR, firmar una autorización de propietario y consultar o revocar su vigencia.
 - Registrar, diagnosticar y resolver incidencias tecnicas o bloqueos normativos con trazabilidad forense.
 - Exportar informes integrales de auditoria y cumplimiento en formato Markdown.
 
@@ -107,7 +107,7 @@ Todas las pruebas pasaron satisfactoriamente.
 1. **Comprobar Servicios:** Pulse *Verificar Conexiones* en la pestana *SERVICIOS & SALUD*. El badge de SQLite y los puertos activos se mostraran en verde con su latencia en milisegundos. Tambien puede abrir FCC Admin (`:8082/admin`) directamente desde la tarjeta de servicio.
 2. **Crear Tarea Kanban:** En la pestana *PROYECTOS & KANBAN*, pulse *+ NUEVA TAREA*, complete los campos y verifique su aparicion inmediata en la tabla.
 3. **Interaccion con Agentes en Code Sessions:** En la pestana *CODE SESSIONS & AGENTES*, seleccione el rol deseado (*Arquitecto de Software*, *Analista*, *QA*, etc.), mantenga el modelo predeterminado gratuito `kilo/kilo-auto/free` (u otro como `kilo/openrouter/free` o `claude-3-5-sonnet-20241022`), redacte una consulta en el recuadro inferior y pulse *ENVIAR A AGENTE*. Compruebe la respuesta del agente y la inmutabilidad del log forense.
-4. **Probar Aprobacion Humana:** Seleccione una tarea en estado distinto a `REVIEW` y compruebe que el sistema bloquea su promocion; seleccione una tarea en `REVIEW` y verifique que transiciona a `DONE` tras la confirmacion.
+4. **Probar Aprobacion Humana:** Seleccione una tarea en estado distinto a `REVIEW` y compruebe que el sistema bloquea su promocion; con una tarea en `REVIEW` y una PR vinculada, compruebe que la firma conserva el estado de la tarea.
 5. **Gestionar Incidencias:** En la pestana *GESTOR DE INCIDENCIAS*, cree una incidencia con severidad `high`, verifiquela en el expediente y proceda a su cierre mediante *RESOLVER / CERRAR*.
 6. **Exportar Auditoria:** En la cabecera, pulse *EXPORTAR INFORME AI-GRC* y verifique la creacion del informe consolidado en la carpeta `reports/`.
 
@@ -157,14 +157,7 @@ AutonomousDevConsole/
 
 ## 7. Diseño de autorización de propietario y comportamiento actual
 
-Factory documenta el diseño objetivo Owner (FIDO) → App Exec → GitHub merge y un DOI previsto. Estas referencias son de diseño; no acreditan que el contrato API esté desplegado ni que el flujo esté disponible en Console.
-
-- **Comportamiento en la base revisada:** `console/app.py` permite confirmar desde la interfaz una aprobación `REVIEW` que escribe directamente `DONE`. La promoción también contempla publicar la rama, crear una PR si falta, fusionarla mediante GitHub CLI y sincronizar/limpiar recursos locales.
-- **Diferencia de seguridad:** ese comportamiento no exige la autorización FIDO descrita por el diseño Factory y no debe tratarse como protección Owner-Only Authorization.
-- **Archivos locales excluidos:** `console/owner_auth_client.py` y `console/owner_signer.py` existen solo en el checkout local de trabajo; no están incluidos en esta PR ni en la base revisada y no acreditan capacidades entregadas.
-- **Estado del DOI:** previsto en el diseño; no se afirma como operativo ni probado por esta entrega documental.
-
-**Estado explícito:** diseño documentado; integración del desarrollo pendiente de revisión; validación operativa pendiente. Esta PR es solo documental: no implementa ni corrige el gap descrito, y no valida la seguridad de Console.
+Desde una tarea en `REVIEW`, la consola presenta el diff de la PR registrada, prepara la autorización ante la API local de Factory y solicita al propietario una firma FIDO ligada al HEAD revisado. Permite consultar el historial y revocar una autorización activa. La tarea permanece en revisión. El ejecutor de integración y la validación con hardware en staging están pendientes.
 
 Referencias: [documentación de autorización y contraste de comportamiento](docs/OWNER_AUTHORIZATION.md), [manual operativo](docs/MANUAL_OPERACION.md) y [fuentes canónicas de Factory](https://github.com/SADOCKDOG/Autonomous-AI-Dev-Infrastructure/blob/main/docs/OWNER_AUTHORIZATION.md).
 
